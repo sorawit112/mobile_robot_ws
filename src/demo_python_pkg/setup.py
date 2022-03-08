@@ -13,13 +13,15 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='trainee',
-    maintainer_email='trainee@todo.todo',
-    description='TODO: Package description',
+    maintainer='sorawit',
+    maintainer_email='sorawit.inp@gmail.com',
+    description='demo basic ros2 structure',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'talker2 = demo_python_pkg.publisher:main',
+            'listener = demo_python_pkg.subscriber:main',
         ],
     },
 )
