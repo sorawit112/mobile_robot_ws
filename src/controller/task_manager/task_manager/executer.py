@@ -1,3 +1,4 @@
+from random import randint
 import rclpy
 from rclpy.node import Node
 
@@ -7,19 +8,22 @@ from task_manager.graph_planner import GraphPlanner
 from std_srvs.srv import Empty
 from std_msgs.msg import Empty
 
+MAP_NAME = "map_01" #TODO: use rosparam instead
+
 class Executer(Node):
     def __init__(self):
         super().__init__('executer')
         self.module_name = 'Executer'
         self.active = False
-
-        self.graph_planner = GraphPlanner(self)
+            
+        self.graph_planner = GraphPlanner(self, MAP_NAME)
         self.worker_manager = WorkerManager(self, 
                                         self.worker_actionlib_feedback,
                                         self.worker_actionlib_result) 
 
         self.create_subscription(Empty, '/do_tasks', self.do_tasks, 1)
         
+        self.initial_node = randint(min(self.graph_planner.graph.nodes), max(self.graph_planner.graph.nodes))
         self.worker_manager.request_worker_execution(Worker.IDLE, goal=10)
 
     def do_tasks(self, _):
@@ -35,15 +39,18 @@ class Executer(Node):
         self.do_logging('do worker tasks')
         if not self.graph_planner.tasks.empty():
             task = self.graph_planner.get()
-            worker,goal = next(iter(task.items()))
+            # worker,goal = next(iter(task.items()))
+            node_start = task.node_start
+            node_goal = task.node_goal
+            worker = task.worker
 
-            self.do_logging("'{0}' start execute goal : {1}".format(self.worker_manager.worker_dict[worker].worker_name, goal))
+            self.do_logging("'{0}' start execute goal : {1}".format(self.worker_manager.worker_dict[worker].worker_name, node_goal))
 
             if worker not in [Worker.IDLE, Worker.NAV, Worker.DOCK]:
                 self.do_logging("worker is not registed --> rejected!!!")
                 return
 
-            result = self.worker_manager.request_worker_execution(worker, goal)
+            result = self.worker_manager.request_worker_execution(worker, node_goal)
 
             if not result:
                 self.do_logging("'{0}' is not Active set mission abort".format(self.worker_manager.worker_dict[worker].worker_name) )

@@ -8,6 +8,8 @@ class Worker(Enum):
     NAV = 1
     DOCK = 2
 
+    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK}
+
 class WorkerEntry(object):
     def __init__(self,
                     node, 
