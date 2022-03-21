@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'graph_generator = map_data.graph_generator:main'
         ],
     },
 )

@@ -2,7 +2,8 @@ from task_manager.worker_manager import Worker
 from queue import Queue
 import networkx as nx
 
-from map_data.graph_generator import GraphLoader
+from map_msg.msg import MapMetadata
+from map_msg.srv import GetMapMetadata
 
 class Task(object):
     def __init__(self, start, goal, worker):
@@ -11,17 +12,39 @@ class Task(object):
         self.worker = worker
 
 class GraphPlanner(object):
-    def __init__(self, node, map_name):
+    def __init__(self, node):
         self.module_name = 'Graph Planner'
         self.node = node
-        graph = GraphLoader(map_name)
-        self.graph = graph._graph
-        self.nodes = graph._nodes
-        self.edges = graph._edges
-        self.edges_task = graph._edges_task
-        self.stations = graph._stations
+
+        self.graph = nx.Graph(name="metadata") #graph._graph
+        self.nodes = {} #graph._nodes
+        self.edges = {} #graph._edges
+        self.edges_task = {} #graph._edges_task
+        self.stations = {} #graph._stations
 
         self.tasks = Queue(0) #infinit size
+
+    def set_map_metadata(self, metadata):
+        node_list = metadata.nodes
+        edge_list = metadata.edges
+        station_list = metadata.stations
+
+        for node in node_list:
+            self.nodes[node.id] = (node.point.x, node.point.y)
+            
+        self.graph.add_nodes_from(self.nodes.keys())
+        for n,p in self.nodes.items():
+            self.graph.nodes[n]['pos'] = p
+
+        for edge in edge_list:
+            self.edges[edge.id] = [edge.src, edge.dst, edge.weight]
+            self.edges_task[edge.id] = edge.worker
+            self.graph.add_edge(edge.src, edge.dst, weight = edge.weight)
+
+        for station in station_list:
+            self.stations[station.name] = station.node_id
+
+        self.do_logging("set_map_metada finished !!")
 
     def plan(self, node_current, station_start, station_goal):
         node_start = self.stations[str(station_start).upper()]

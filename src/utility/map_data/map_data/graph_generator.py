@@ -1,20 +1,67 @@
+from queue import Empty
+import rclpy
+from rclpy.node import Node
+
 from task_manager.worker_manager import Worker
+from visualization_msgs.msg import MarkerArray, Marker
+from map_msg.msg import MapMetadata, MapNode, MapEdge, MapStation
+from map_msg.srv import GetMapMetadata
+from geometry_msgs.msg import Point
 import networkx as nx
 import os, glob, pathlib
 import json
 import math
 
-class GraphLoader:
+class GraphLoader(Node):
+    # Fleet Management Initialized This Node
+
     def __init__(self, map_name):
+        super().__init__('graph_loader')
+
         self.map_name = map_name
         self._graph = nx.Graph(name=map_name)
-        self._nodes, self._edges, self._edges_task, self._stations = self.load_metadata(map_name)
+        self._nodes, self._edges, self._edges_worker, self._stations = self.load_metadata(map_name)
 
-        self._graph.add_nodes_from(self._nodes.keys())
-        for n,p in self._nodes.items():
-            self._graph.nodes[n]['pos'] = p
-        for e,d in self._edges.items():
-            self._graph.add_edge(d[0],d[1],weight=euc2d(self._nodes[d[0]],self._nodes[d[1]]))
+        self.visualize_pub = self.create_publisher(MarkerArray, 'visualize_graph', qos_profile=1)
+        test = MapMetadata()
+        self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
+        self.create_timer(1, self.draw_graph_cb)
+
+    def handle_get_metadata(self, request, response):
+        map_metadata = MapMetadata()
+
+        node_list = []
+        for id, p in self._nodes.items():
+            node = MapNode()
+            node.id = id
+            node.point = Point(x=p[0], y=p[1], z=0.)
+            node_list.append(node)
+           
+        edge_list = []
+        for id, d in self._edges.items():
+            edge = MapEdge()
+            edge.id = id
+            edge.src = d[0]
+            edge.dst = d[1]
+            edge.weight = euc2d(self._nodes[d[0]],self._nodes[d[1]])
+            edge.worker = self._edges_worker[id]
+            edge_list.append(edge)
+
+        station_list = []
+        
+        for name, node_id in self._stations.items():
+            station = MapStation()
+            station.name = name
+            station.node_id = node_id
+            station_list.append(station)
+
+        map_metadata.nodes = node_list
+        map_metadata.edges = edge_list
+        map_metadata.stations = station_list
+
+        response.metadata = map_metadata
+
+        return response
 
     def load_metadata(self, map_name):
         # path = pathlib.Path(__file__).parent.resolve()
@@ -40,14 +87,74 @@ class GraphLoader:
 
         return dict_nodes, dict_edges, dict_edges_task, dict_stations
 
+    def draw_graph_cb(self):
+        marker_list = MarkerArray()
+        # draw nodes
+        marker = Marker()
+        marker.header.frame_id = 'map'
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "nodes"
+        marker.id = 1
+        marker.type = Marker.POINTS
+        marker.action = Marker.ADD
+
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+
+        marker.points.clear()
+        for n,p in self._nodes.items():
+            marker.points.append(Point(x=p[0], y=p[1], z=0.))
+
+        marker_list.markers.append(marker)
+
+        #draw edges
+        marker = Marker()
+        marker.header.frame_id = 'map'
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "edges"
+        marker.id = 2
+        marker.type = Marker.LINE_LIST
+        marker.action = Marker.ADD
+
+        marker.scale.x = 0.05
+        marker.scale.y = 0.
+        marker.scale.z = 0.
+        marker.color.a = 1.0
+        marker.color.r = 0.5
+        marker.color.g = 0.5
+        marker.color.b = 0.5
+
+        marker.points.clear()
+        for e,d in self._edges.items():
+            node_1 = self._nodes[d[0]]
+            node_2 = self._nodes[d[1]]
+            marker.points.append(Point(x=node_1[0], y=node_1[1], z=0.))
+            marker.points.append(Point(x=node_2[0], y=node_2[1], z=0.))
+
+        marker_list.markers.append(marker)
+
+        self.visualize_pub.publish(marker_list)
+
+
 def euc2d(p1,p2):
     return math.sqrt((p1[0]-p2[0])**2+(p1[1]-p2[1])**2)    
 
 
-if __name__=="__main__":
-    graph_loader = GraphLoader('map_01')
-    print(graph_loader._nodes)
-    print(graph_loader._edges)
-    print(graph_loader._stations)
-    print(graph_loader._graph.edges())
-    print(graph_loader._edges_task)
+def main(args=None):
+    rclpy.init(args=args)
+
+    action_client = GraphLoader("map_01")
+
+    rclpy.spin(action_client)
+
+    action_client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()

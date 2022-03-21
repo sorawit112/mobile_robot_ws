@@ -7,24 +7,44 @@ from task_manager.worker_manager import Worker, WorkerManager
 from task_manager.graph_planner import GraphPlanner
 from std_srvs.srv import Empty
 from std_msgs.msg import Empty
-
-MAP_NAME = "map_01" #TODO: use rosparam instead
+from map_msg.srv import GetMapMetadata
 
 class Executer(Node):
     def __init__(self):
         super().__init__('executer')
         self.module_name = 'Executer'
         self.active = False
+        self.map_metadata = None
             
-        self.graph_planner = GraphPlanner(self, MAP_NAME)
+        self.graph_planner = GraphPlanner(self)
         self.worker_manager = WorkerManager(self, 
                                         self.worker_actionlib_feedback,
                                         self.worker_actionlib_result) 
+
+        self.getmap_cli = self.create_client(GetMapMetadata, 'get_map_metadata')
+        self.request_map_metadata()
 
         self.create_subscription(Empty, '/do_tasks', self.do_tasks, 1)
         
         self.initial_node = randint(min(self.graph_planner.graph.nodes), max(self.graph_planner.graph.nodes))
         self.worker_manager.request_worker_execution(Worker.IDLE, goal=10)
+
+    def request_map_metadata(self):
+        self.do_logging('wait for get map metdata service')
+        srv_ready = self.getmap_cli.wait_for_service()
+        if not srv_ready:
+            self.do_logging('get map metdata service not ready')
+            return 
+
+        self.do_logging('receive response from server')
+        future = self.getmap_cli.call_async(GetMapMetadata.Request())
+        rclpy.spin_until_future_complete(self, future)
+
+        self.graph_planner.set_map_metadata(future.result().metadata)
+        self.graph_planner.plan(9,'A','e')
+        while not self.graph_planner.tasks.empty():
+            task = self.graph_planner.tasks.get()
+            print(task.node_start, task.node_goal, task.worker)
 
     def do_tasks(self, _):
         if not self.active:
@@ -63,7 +83,6 @@ class Executer(Node):
     def worker_actionlib_result(self, future, worker):
         result = future.result().result
         self.do_logging("'{}' Received Result: {}".format(worker.worker_name, result.sequence))
-        worker._executing = False
 
         self.do_worker_tasks()
 
