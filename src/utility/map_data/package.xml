@@ -7,7 +7,7 @@
   <maintainer email="sorawit.inp@gmail.com">trainee</maintainer>
   <license>TODO: License declaration</license>
 
-  <exec_depend>map_msg</exec_depend>
+  <exec_depend>custom_msgs</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>std_msgs</exec_depend>
 

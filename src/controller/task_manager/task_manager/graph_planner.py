@@ -2,8 +2,8 @@ from task_manager.worker_manager import Worker
 from queue import Queue
 import networkx as nx
 
-from map_msg.msg import MapMetadata
-from map_msg.srv import GetMapMetadata
+from custom_msgs.msg import MapMetadata
+from custom_msgs.srv import GetMapMetadata
 
 class Task(object):
     def __init__(self, start, goal, worker):

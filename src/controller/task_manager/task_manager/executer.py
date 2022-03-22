@@ -7,7 +7,7 @@ from task_manager.worker_manager import Worker, WorkerManager
 from task_manager.graph_planner import GraphPlanner
 from std_srvs.srv import Empty
 from std_msgs.msg import Empty
-from map_msg.srv import GetMapMetadata
+from custom_msgs.srv import GetMapMetadata
 
 class Executer(Node):
     def __init__(self):

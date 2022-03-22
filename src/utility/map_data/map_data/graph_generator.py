@@ -4,8 +4,8 @@ from rclpy.node import Node
 
 from task_manager.worker_manager import Worker
 from visualization_msgs.msg import MarkerArray, Marker
-from map_msg.msg import MapMetadata, MapNode, MapEdge, MapStation
-from map_msg.srv import GetMapMetadata
+from custom_msgs.msg import MapMetadata, MapNode, MapEdge, MapStation
+from custom_msgs.srv import GetMapMetadata
 from geometry_msgs.msg import Point
 import networkx as nx
 import os, glob, pathlib
