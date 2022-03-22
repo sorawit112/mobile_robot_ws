@@ -19,11 +19,9 @@ class GraphLoader(Node):
         super().__init__('graph_loader')
 
         self.map_name = map_name
-        self._graph = nx.Graph(name=map_name)
         self._nodes, self._edges, self._edges_worker, self._stations = self.load_metadata(map_name)
 
         self.visualize_pub = self.create_publisher(MarkerArray, 'visualize_graph', qos_profile=1)
-        test = MapMetadata()
         self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
         self.create_timer(1, self.draw_graph_cb)
 
@@ -66,7 +64,7 @@ class GraphLoader(Node):
     def load_metadata(self, map_name):
         # path = pathlib.Path(__file__).parent.resolve()
         # path = os.path.dirname(path)
-        file = glob.glob('/home/trainee/ros2_ws/mobile_robot_ws/src/utility/map_data/map_data/map_01/metadata.json')
+        file = glob.glob('/home/trainee/ros2_ws/mobile_robot_ws/src/utility/map_data/map_data/' + str(self.map_name) + '/metadata.json')
         with open(file[0],"r") as json_data:
             try:
                 data = json.load(json_data)
@@ -148,7 +146,7 @@ def euc2d(p1,p2):
 def main(args=None):
     rclpy.init(args=args)
 
-    action_client = GraphLoader("map_01")
+    action_client = GraphLoader("map_turtlesim")
 
     rclpy.spin(action_client)
 
