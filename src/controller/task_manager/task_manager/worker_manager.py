@@ -7,8 +7,9 @@ class Worker(Enum):
     IDLE = 0
     NAV = 1
     DOCK = 2
+    TURTLE = 3
 
-    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK}
+    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
 
 class WorkerEntry(object):
     def __init__(self,
