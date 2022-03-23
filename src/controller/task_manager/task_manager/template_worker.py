@@ -4,14 +4,17 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.node import Node
 
 class TemplateWorker(Node):
-    def __init__(self, node_name, action_spec, execute_cb=None, 
-                                               goal_cb=None, 
-                                               accepted_cb=None, 
-                                               cancel_cb=None):
+    def __init__(self, node_name, loop_frequency, action_spec, execute_cb=None, 
+                                                                goal_cb=None, 
+                                                                accepted_cb=None, 
+                                                                cancel_cb=None):
         super().__init__(node_name)
         self.node_name = node_name
         self._goal_handle = None
         self._goal_lock = threading.Lock()
+
+        self.worker_transform = None
+        self.rate = self.create_rate(loop_frequency)
 
         _execute_callback = execute_cb if execute_cb != None else self.default_execute_cb
         _goal_callback = goal_cb if goal_cb != None else self.default_goal_cb

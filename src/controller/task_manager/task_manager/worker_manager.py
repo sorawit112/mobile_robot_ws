@@ -1,5 +1,5 @@
 from rclpy.action import ActionClient
-from action_tutorials_interfaces.action import Fibonacci
+from custom_msgs.action import NavigateAction
 from enum import Enum
 
 class Worker(Enum):
@@ -31,6 +31,13 @@ class WorkerEntry(object):
         self._goal_handle = None
         self.action_topic = "/" + str(self.worker_name) + "_server"
         self.action_client = ActionClient(node, self.action_spec, self.action_topic)
+
+    def is_server_ready(self):
+        result = self.action_client.wait_for_server(5)
+        if not result:
+            self.do_logging('Server ' + str(self.action_topic) + ' Not Active')
+            return False
+        return True
 
     def cancel_goal(self):
         self.do_logging('canceling current goal')
@@ -105,8 +112,7 @@ class WorkerManager(object):
 
         self.create_workers()
 
-
-    def request_worker_execution(self, worker, goal=0):
+    def request_worker_execution(self, worker, goal):
         self.worker_executing = self.worker_dict[worker]
         
         self.do_logging("request '{}' to exection".format(self.worker_executing.worker_name))
@@ -120,13 +126,29 @@ class WorkerManager(object):
 
         return worker.cancel_goal()
 
+    def initial_first_worker(self):
+        initial_worker = self.worker_dict[Worker.IDLE]
+        server_ready = initial_worker.is_server_ready()
+
+        if not server_ready:
+            self.do_logging("initial first worker FAILED!!!")
+            return
+        
+        self.do_logging("initial first worker")
+        navigate_goal = NavigateAction.Goal()
+        navigate_goal.src_pose.header.stamp = self.node.get_clock().now().to_msg()
+        navigate_goal.src_pose.header.frame_id = "map"
+        navigate_goal.src_pose.pose.position.x = self.node.start_pose[0]
+        navigate_goal.src_pose.pose.position.y = self.node.start_pose[1]
+
+        self.request_worker_execution(Worker.IDLE, navigate_goal)
 
     def create_workers(self):
         idle_worker = WorkerEntry(
                             self.node,
                             "idle_worker",
-                            worker_id=0,
-                            action_spec=Fibonacci,
+                            worker_id=Worker.IDLE,
+                            action_spec=NavigateAction,
                             result_callback=self.result_cb,
                             feedback_callback=self.feedback_cb
                             )
@@ -134,8 +156,8 @@ class WorkerManager(object):
         nav_worker = WorkerEntry(
                             self.node,
                             "nav_worker",
-                            worker_id=1,
-                            action_spec=Fibonacci,
+                            worker_id=Worker.NAV,
+                            action_spec=NavigateAction,
                             result_callback=self.result_cb,
                             feedback_callback=self.feedback_cb
                             )
@@ -143,8 +165,16 @@ class WorkerManager(object):
         docking_worker = WorkerEntry(
                             self.node,
                             "docking_worker",
-                            worker_id=2,
-                            action_spec=Fibonacci,
+                            worker_id=Worker.DOCK,
+                            action_spec=NavigateAction,
+                            result_callback=self.result_cb,
+                            feedback_callback=self.feedback_cb
+                            )
+
+        turtle_worker = WorkerEntry(self.node,
+                            "turtle_worker",
+                            worker_id=Worker.TURTLE,
+                            action_spec=NavigateAction,
                             result_callback=self.result_cb,
                             feedback_callback=self.feedback_cb
                             )
@@ -152,6 +182,7 @@ class WorkerManager(object):
         self.worker_dict[Worker.IDLE] = idle_worker
         self.worker_dict[Worker.NAV] = nav_worker
         self.worker_dict[Worker.DOCK] = docking_worker
+        self.worker_dict[Worker.TURTLE] = turtle_worker
 
     def do_logging(self, msg):
         self.node.get_logger().info("[{0}] {1}".format(self.module_name, msg))
