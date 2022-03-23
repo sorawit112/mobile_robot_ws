@@ -1,4 +1,5 @@
 import time
+from controller.workers.turtle_worker.turtle_worker.controller import Controller
 
 from custom_msgs.action import NavigateAction
 from task_manager.template_worker import TemplateWorker
@@ -7,12 +8,12 @@ from geometry_msgs.msg import PoseStamped
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 
-NODE_NAME = 'docking_worker'
-class DockingWorker(TemplateWorker):
+NODE_NAME = 'turtle_worker'
+class TurtleWorker(TemplateWorker):
     frequency = 10
     def __init__(self):
         super().__init__(NODE_NAME, self.frequency, NavigateAction, self.execute_callback)
-        self.controller = None
+        self.controller = Controller(self)
         
     def execute_callback(self, goal_handle):
         """Execute the goal."""
@@ -20,6 +21,10 @@ class DockingWorker(TemplateWorker):
 
         #Initialze feedback msg
         feedback_msg = NavigateAction.Feedback()
+        feedback_msg.current_pose = PoseStamped()
+        
+        self.controller.goal_pose = goal_handle.request.dst_pose
+        self.controller.current_pose = goal_handle.request.src_pose
 
         self.controller.active = True
 
@@ -47,7 +52,7 @@ class DockingWorker(TemplateWorker):
             goal_handle.publish_feedback(feedback_msg)
 
             # Sleep for demonstration purposes
-            self.control_rate.sleep()
+            self.rate.sleep()
 
         goal_handle.succeed()
 
@@ -57,18 +62,19 @@ class DockingWorker(TemplateWorker):
         
         self.do_logging('Returning result: {0}'.format(result.last_pose))
 
-        return result
+        self.controller.active = False
 
+        return result
 
 def main(args=None):
     rclpy.init(args=args)
 
-    docking_worker = DockingWorker()
+    turtle_worker = TurtleWorker()
 
     executor = MultiThreadedExecutor()
-    rclpy.spin(docking_worker, executor=executor)
+    rclpy.spin(turtle_worker, executor=executor)
 
-    docking_worker.destroy()
+    turtle_worker.destroy()
     rclpy.shutdown()
 
 

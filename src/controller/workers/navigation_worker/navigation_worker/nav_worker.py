@@ -1,6 +1,6 @@
 import time
 
-from action_tutorials_interfaces.action import Fibonacci
+from custom_msgs.action import NavigateAction
 from task_manager.template_worker import TemplateWorker
 
 import rclpy
@@ -8,16 +8,16 @@ from rclpy.executors import MultiThreadedExecutor
 
 NODE_NAME = 'nav_worker'
 class NavigationWorker(TemplateWorker):
+    frequency = 10
     def __init__(self):
-        super().__init__(NODE_NAME, Fibonacci, self.execute_callback)
+        super().__init__(NODE_NAME, self.frequency, NavigateAction, self.execute_callback)
         
     def execute_callback(self, goal_handle):
         """Execute the goal."""
         self.do_logging('Executing goal...')
 
         # Append the seeds for the Fibonacci sequence
-        feedback_msg = Fibonacci.Feedback()
-        feedback_msg.partial_sequence = [0, 1]
+        feedback_msg = NavigateAction.Feedback()
 
         # Start executing the action
         for i in range(1, goal_handle.request.order):
@@ -26,17 +26,17 @@ class NavigationWorker(TemplateWorker):
             if not goal_handle.is_active:
                 goal_handle.aborted()
                 self.do_logging('Goal aborted')
-                return Fibonacci.Result()
+                return NavigateAction.Result()
 
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
                 self.do_logging('Goal canceled')
-                return Fibonacci.Result()
+                return NavigateAction.Result()
 
             # Update Fibonacci sequence
-            feedback_msg.partial_sequence.append(feedback_msg.partial_sequence[i] + feedback_msg.partial_sequence[i-1])
+            feedback_msg.current_pose = 0 #TODO
 
-            self.do_logging('Publishing feedback: {0}'.format(feedback_msg.partial_sequence))
+            self.do_logging('Publishing feedback: {0}'.format(feedback_msg.current_pose))
 
             # Publish the feedback
             goal_handle.publish_feedback(feedback_msg)
@@ -47,10 +47,10 @@ class NavigationWorker(TemplateWorker):
         goal_handle.succeed()
 
         # Populate result message
-        result = Fibonacci.Result()
-        result.sequence = feedback_msg.partial_sequence
+        result = NavigateAction.Result()
+        result.last_pose = feedback_msg.current_pose
 
-        self.do_logging('Returning result: {0}'.format(result.sequence))
+        self.do_logging('Returning result: {0}'.format(result.last_pose))
 
         return result
 
