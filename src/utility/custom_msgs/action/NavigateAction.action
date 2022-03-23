@@ -1,0 +1,8 @@
+int32 src_node
+int32 dst_node
+geometry_msgs/PoseStamped src_pose
+geometry_msgs/PoseStamped dst_pose
+---
+geometry_msgs/PoseStamped last_pose
+---
+geometry_msgs/PoseStamped current_pose
