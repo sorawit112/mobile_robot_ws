@@ -1,13 +1,14 @@
-from random import randint
 import rclpy
 from rclpy.node import Node
 
 from rclpy.executors import MultiThreadedExecutor
 from task_manager.worker_manager import Worker, WorkerManager
+from task_manager.transform_manager import TransformManager
 from task_manager.graph_planner import GraphPlanner
 from std_srvs.srv import Empty
 from std_msgs.msg import Empty
 from custom_msgs.srv import GetMapMetadata
+from geometry_msgs.msg import PoseStamped
 
 class Executer(Node):
     def __init__(self):
@@ -15,9 +16,13 @@ class Executer(Node):
         self.module_name = 'Executer'
         self.active = False
         self.map_metadata = None
-            
-        self.graph_planner = GraphPlanner(self)
+        self.start_pose = [0,0] #TODO: get from rosparam instead
+        self.last_pose = PoseStamped()
+
+        self.transform_manager = TransformManager(self)
+        self.graph_planner = GraphPlanner(self, self.transform_manager)
         self.worker_manager = WorkerManager(self, 
+                                        self.transform_manager,
                                         self.worker_actionlib_feedback,
                                         self.worker_actionlib_result) 
 
@@ -25,10 +30,9 @@ class Executer(Node):
         self.request_map_metadata()
 
         self.create_subscription(Empty, '/do_tasks', self.do_tasks, 1)
+              
+        self.worker_manager.initial_first_worker()
         
-        self.initial_node = randint(min(self.graph_planner.graph.nodes), max(self.graph_planner.graph.nodes))
-        self.worker_manager.request_worker_execution(Worker.IDLE, goal=10)
-
     def request_map_metadata(self):
         self.do_logging('wait for get map metdata service')
         srv_ready = self.getmap_cli.wait_for_service()
@@ -41,53 +45,64 @@ class Executer(Node):
         rclpy.spin_until_future_complete(self, future)
 
         self.graph_planner.set_map_metadata(future.result().metadata)
-        self.graph_planner.plan(9,'A','e')
-        while not self.graph_planner.tasks.empty():
-            task = self.graph_planner.tasks.get()
-            print(task.node_start, task.node_goal, task.worker)
 
     def do_tasks(self, _):
         if not self.active:
-            self.do_logging('do tasks')
             self.active = True
-            self.graph_planner.plan()
+            self.do_logging('do tasks')
+
             result = self.worker_manager.request_worker_cancel(Worker.IDLE)
             if result:
                 self.do_logging('canecel idle worker completed -> ready to do worker tasks')
-
+            
+            current_pose = self.get_current_pose()
+            self.graph_planner.plan(current_pose, 'A', 'C')
+            
     def do_worker_tasks(self):
         self.do_logging('do worker tasks')
         if not self.graph_planner.tasks.empty():
             task = self.graph_planner.get()
-            # worker,goal = next(iter(task.items()))
-            node_start = task.node_start
-            node_goal = task.node_goal
             worker = task.worker
+            navigate_goal = self.worker_manager[worker].create_navigate_action_goal(task, self.last_pose)
 
-            self.do_logging("'{0}' start execute goal : {1}".format(self.worker_manager.worker_dict[worker].worker_name, node_goal))
-
-            if worker not in [Worker.IDLE, Worker.NAV, Worker.DOCK]:
+            if worker not in list(Worker._dict.values()):
                 self.do_logging("worker is not registed --> rejected!!!")
                 return
 
-            result = self.worker_manager.request_worker_execution(worker, node_goal)
+            self.do_logging("'{0}' start execute goal from nodes : {1} -> {2}".format(
+                                    self.worker_manager.worker_dict[worker].worker_name, 
+                                    task.src_node, task.dst_node))
+            self.worker_manager[worker].log_worker_action_goal(navigate_goal)
+
+            result = self.worker_manager.request_worker_execution(worker, navigate_goal)
 
             if not result:
                 self.do_logging("'{0}' is not Active set mission abort".format(self.worker_manager.worker_dict[worker].worker_name) )
-            
+                
+                """ TODO: 
+                    1. try to recovery worker from task (restart worker or something)
+                    2. excepted return aborted to fleet Management/tasks client
+                """
         else:
             self.do_logging("empty task list --> finish job")
             self.active = False
-            self.worker_manager.request_worker_execution(Worker.IDLE)
+            self.worker_manager.active_idle_worker(self.last_pose)
 
     def worker_actionlib_result(self, future, worker):
         result = future.result().result
-        self.do_logging("'{}' Received Result: {}".format(worker.worker_name, result.sequence))
-
+        self.last_pose = result.last_pose
+        self.do_logging("'{}' Received Last Pose: {}".format(worker.worker_name, result.last_pose))
+        
         self.do_worker_tasks()
 
     def worker_actionlib_feedback(self, feedback, worker):
         self.do_logging("'{}' Received Feedback: {}".format(worker.worker_name, feedback.feedback.partial_sequence))
+    
+    def get_current_pose(self):
+        current_tf = self.transform_manager.get_tf('map', 'base_footprint')
+        current_pose = self.transform_manager.pose_stamped_from_tf_stamped(current_tf)
+
+        return current_pose
 
     def do_logging(self, msg):
         self.get_logger().info("[{0}] {1}".format(self.module_name, msg))

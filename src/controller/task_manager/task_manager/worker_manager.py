@@ -1,5 +1,8 @@
+import math
 from rclpy.action import ActionClient
 from custom_msgs.action import NavigateAction
+from task_manager.transform_manager import TransformManager
+from geometry_msgs.msg import PoseStamped
 from enum import Enum
 
 class Worker(Enum):
@@ -101,10 +104,11 @@ class WorkerEntry(object):
 
 
 class WorkerManager(object):
-    def __init__(self, node, feedback_cb, result_cb):
-        self.module_name = 'Worker Manager'
+    def __init__(self, node, transformanager, feedback_cb, result_cb):
+        self.module_name = 'Worker_Manager'
         self.worker_dict = {}
         self.worker_executing = None
+        self.transform_manager = transformanager
 
         self.node = node
         self.feedback_cb = feedback_cb
@@ -125,6 +129,16 @@ class WorkerManager(object):
         self.do_logging("request '{}' to cancel".format(worker.worker_name))
 
         return worker.cancel_goal()
+    
+    def active_idle_worker(self, last_pose):
+        idle_worker = self.worker_dict[Worker.IDLE]
+
+        self.do_logging("active idle worker")
+        navigate_goal = NavigateAction.Goal()
+        navigate_goal.src_pose.pose = last_pose
+        navigate_goal.src_pose.header.stamp = self.node.get_clock().now().to_msg()
+
+        self.request_worker_execution(idle_worker, navigate_goal)
 
     def initial_first_worker(self):
         initial_worker = self.worker_dict[Worker.IDLE]
@@ -141,7 +155,7 @@ class WorkerManager(object):
         navigate_goal.src_pose.pose.position.x = self.node.start_pose[0]
         navigate_goal.src_pose.pose.position.y = self.node.start_pose[1]
 
-        self.request_worker_execution(Worker.IDLE, navigate_goal)
+        self.request_worker_execution(initial_worker, navigate_goal)
 
     def create_workers(self):
         idle_worker = WorkerEntry(
@@ -183,6 +197,51 @@ class WorkerManager(object):
         self.worker_dict[Worker.NAV] = nav_worker
         self.worker_dict[Worker.DOCK] = docking_worker
         self.worker_dict[Worker.TURTLE] = turtle_worker
+
+    def create_navigate_action_goal(self, task, src_pose):
+        goal = NavigateAction.Goal()
+        goal.src_node = task.src_node
+        goal.dst_node = task.dst_node
+        goal.src_pose = src_pose
+        
+        dst_pose = PoseStamped()
+        dst_pose.header.stamp = self.node.get_clock().now().to_msg()
+        dst_pose.header.frame_id = "map"
+        dst_pose.pose.position.x = task.dst_pose[0]
+        dst_pose.pose.position.y = task.dst_pose[1]
+        dst_pose.pose.position.z = 0
+
+        goal.dst_pose = self.calculate_heading(src_pose, dst_pose)
+
+        return goal
+
+    def calculate_heading(self, src_pose, dst_pose):
+        y_diff = dst_pose.pose.position.y - dst_pose.pose.position.y
+        x_diff = src_pose.pose.position.x - src_pose.pose.position.x
+
+        theta = math.atan2(y_diff, x_diff)
+
+        x,y,z,w = self.transform_manager.quaternion_from_euler(0,0,theta)
+
+        dst_pose.pose.orientation.x = x
+        dst_pose.pose.orientation.y = y
+        dst_pose.pose.orientation.z = z
+        dst_pose.pose.orientation.w = w
+
+        return dst_pose
+
+    def log_worker_action_goal(self, goal):
+        self.do_logging("FROM : [{}] ({}, {})".format(
+            goal.src_node,
+            goal.src_pose.pose.position.x,
+            goal.src_pose.pose.position.y,
+        ))
+
+        self.do_logging("TO : [{}] ({}, {})".format(
+            goal.dst_node,
+            goal.dst_pose.pose.position.x,
+            goal.dst_pose.pose.position.y,
+        ))
 
     def do_logging(self, msg):
         self.node.get_logger().info("[{0}] {1}".format(self.module_name, msg))

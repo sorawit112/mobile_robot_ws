@@ -1,26 +1,30 @@
 from task_manager.worker_manager import Worker
 from queue import Queue
 import networkx as nx
+import numpy as np
 
-from custom_msgs.msg import MapMetadata
-from custom_msgs.srv import GetMapMetadata
+from geometry_msgs.msg import PoseStamped
 
 class Task(object):
-    def __init__(self, start, goal, worker):
-        self.node_start = start
-        self.node_goal = goal
+    def __init__(self, src_node, dst_node, src_pose, dst_pose, worker):
+        self.src_node = src_node
+        self.dst_node = dst_node
+        self.src_pose = src_pose
+        self.dst_pose = dst_pose
         self.worker = worker
 
 class GraphPlanner(object):
-    def __init__(self, node):
+    def __init__(self, node, transform_manager):
         self.module_name = 'Graph Planner'
         self.node = node
 
+        self.transform_manager = transform_manager
+
         self.graph = nx.Graph(name="metadata") #graph._graph
-        self.nodes = {} #graph._nodes
-        self.edges = {} #graph._edges
-        self.edges_task = {} #graph._edges_task
-        self.stations = {} #graph._stations
+        self.nodes = {} 
+        self.edges = {} 
+        self.edges_task = {} 
+        self.stations = {} 
 
         self.tasks = Queue(0) #infinit size
 
@@ -46,7 +50,8 @@ class GraphPlanner(object):
 
         self.do_logging("set_map_metada finished !!")
 
-    def plan(self, node_current, station_start, station_goal):
+    def plan(self, current_pose, station_start, station_goal):
+        node_current = self.nearest_node_from_pose(current_pose.pose)
         node_start = self.stations[str(station_start).upper()]
         node_goal = self.stations[str(station_goal).upper()]
 
@@ -76,18 +81,34 @@ class GraphPlanner(object):
         if not pathFound:
             self.do_logging("plan !!FAILED")
             return False
-
+        
         for i in range(len(via_points)-1):
-            s = via_points[i]
-            g = via_points[i+1]
+            src_node = via_points[i]
+            dst_node = via_points[i+1]
+            src_pose = self.nodes[src_node]
+            dst_pose = self.nodes[dst_node]
 
-            edge = self.edge_from_nodes(s,g)
+            edge = self.edge_from_nodes(src_node, dst_node)
+
             worker = self.edges_task[edge]
-            task = Task(s,g,worker)
+            task = Task(src_node, dst_node, src_pose, dst_pose, worker)
             self.tasks.put(task)           
         
         self.do_logging("plan !!SUCCEED")
         return True
+
+    def nearest_node_from_pose(self, pose):
+        current = np.array([pose.position.x, pose.position.y])
+        min_dist = 999
+
+        for n,p in self.nodes.items():
+            dist = np.linalg.norm(current - np.array(p))
+            if dist < min_dist:
+                min_node_dist = n
+                min_dist = dist
+
+        self.do_logging("Nearest Node[{1}] from pose : {0}".format((pose.position.x, pose.position.y), min_node_dist))
+        return min_node_dist
 
     def edge_from_nodes(self, s, g):
         node_in_edge = tuple(sorted([s,g]))
@@ -96,7 +117,7 @@ class GraphPlanner(object):
     def get(self):
         self.do_logging('peek first one from tasks queue')
         return self.tasks.get_nowait()
-        
+
     def do_logging(self, msg):
         self.node.get_logger().info("[{0}] {1}".format(self.module_name, msg))
 
@@ -105,4 +126,4 @@ if __name__ == "__main__":
     plan.plan(9,'A','e')
     while not plan.tasks.empty():
         task = plan.tasks.get()
-        print(task.node_start, task.node_goal, task.worker)
+        print(task.src_node, task.dst_node, task.worker)

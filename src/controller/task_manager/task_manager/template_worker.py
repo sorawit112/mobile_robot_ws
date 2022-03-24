@@ -1,4 +1,5 @@
 import threading
+from task_manager.transform_manager import TransformManager
 
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.node import Node
@@ -12,8 +13,9 @@ class TemplateWorker(Node):
         self.node_name = node_name
         self._goal_handle = None
         self._goal_lock = threading.Lock()
-
-        self.worker_transform = None
+        
+        self.transform_manager = TransformManager(self)
+        self.worker_transform = self.transform_manager.create_tf('map', 'base_footprint')
         self.rate = self.create_rate(loop_frequency)
 
         _execute_callback = execute_cb if execute_cb != None else self.default_execute_cb
@@ -58,6 +60,12 @@ class TemplateWorker(Node):
         """Accept or reject a client request to cancel an action."""
         self.do_logging('Received cancel request')
         return CancelResponse.ACCEPT
+
+    def publish_tf(self):
+        self.transform_manager.publish_tf(self.worker_transform)
+
+    def publish_odom_tf(self):
+        self.transform_manager.publish_odom_tf(self.worker_transform)   
 
     def do_logging(self, msg):
         self.get_logger().info("[{}] {}".format(self.node_name, msg))

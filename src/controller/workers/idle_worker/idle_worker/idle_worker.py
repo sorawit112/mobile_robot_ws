@@ -16,7 +16,8 @@ class IdleWorker(TemplateWorker):
         
     def on_initial_pose(self, msg):
         if msg.header.frame_id == 'map':
-            pass
+            self.worker_transform = self.transform_manager.tf_stamped_from_pose_stamped(msg.pose, 'base_footprint')
+            self.publish_odom_tf()
         else:
             pass
 
