@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'turtle_worker = turtle_worker.turtle_worker:main'
         ],
     },
 )

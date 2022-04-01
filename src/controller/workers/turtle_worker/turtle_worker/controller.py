@@ -17,10 +17,22 @@ class Controller(object):
         self.active = False
 
         self.cmd_pub = self.worker.create_publisher(Twist, '/turtle1/cmd_vel', qos_profile=1)
-        self.worker.create_subscription(Pose,'/turtle1/pose',self.pose_callback,10)
+        self.worker.create_subscription(Pose,'/turtle1/pose',self.turtle_pose_cb, qos_profile=1)
     
+    def get_current_pose_stamped(self, pose_stamped):
+        pose_stamped.pose.position.x = self.current_pose.x
+        pose_stamped.pose.position.y = self.current_pose.y
+        
+        x,y,z,w = self.worker.tf_manager.quaternion_from_euler(0., 0., self.current_pose.theta)
+        pose_stamped.pose.orientation.x = x
+        pose_stamped.pose.orientation.y = y
+        pose_stamped.pose.orientation.z = z
+        pose_stamped.pose.orientation.w = w
+
+        return pose_stamped
+
     def turtle_pose_cb(self, msg):
-        if self.active:
+        if self.worker.working:
             self.current_pose.x = msg.x
             self.current_pose.y = msg.y
             self.current_pose.theta = msg.theta
@@ -28,16 +40,12 @@ class Controller(object):
     def control_loop(self):
         dp = np.array([self.goal_pose.x, self.goal_pose.y])-np.array([self.current_pose.x, self.current_pose.y])
         dist = np.linalg.norm(dp)
-        msg = Twist()
+        
         if dist > 0.2:
             v,w = self.control_policy(dp)
-            msg.linear.x = v
-            msg.angular.z = w
-            self.cmd_pub.publish(msg)
+            self.walk(v,w)
         else:
-            msg.linear.x = 0.0
-            msg.angular.z = 0.0
-            self.cmd_pub.publish(msg)
+            self.walk(0.0, 0.0)
             self.goal_reach = True
             self.do_logging('Robot is stopped.')
 
@@ -46,6 +54,16 @@ class Controller(object):
             e = math.atan2(err[1],err[0])-self.current_pose.theta
             w = self.k_w*math.atan2(math.sin(e),math.cos(e)) 
             return v,w
+    
+    def walk(self, v, w):
+        if not self.worker.working:
+            self.do_logging('turtle walk while worker is not active -> pass')
+            return
+
+        msg = Twist()
+        msg.linear.x = v
+        msg.angular.z = w
+        self.cmd_pub.publish(msg)
 
     def do_logging(self, msg):
         self.worker.get_logger().info("[{}] {}".format(self.module_name, msg))

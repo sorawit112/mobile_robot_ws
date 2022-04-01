@@ -14,8 +14,10 @@ class TemplateWorker(Node):
         self._goal_handle = None
         self._goal_lock = threading.Lock()
         
-        self.transform_manager = TransformManager(self)
-        self.worker_transform = self.transform_manager.create_tf('map', 'base_footprint')
+        self.tf_manager = TransformManager(self)
+        self.worker_transform = self.tf_manager.create_tf('map', 'robot_pose')
+
+        self.working = False
         self.rate = self.create_rate(loop_frequency)
 
         _execute_callback = execute_cb if execute_cb != None else self.default_execute_cb
@@ -61,11 +63,19 @@ class TemplateWorker(Node):
         self.do_logging('Received cancel request')
         return CancelResponse.ACCEPT
 
-    def publish_tf(self):
-        self.transform_manager.publish_tf(self.worker_transform)
+    def publish_tf(self,tf=None, delay=0):
+        if tf is None:
+            tf = self.worker_transform
+        self.tf_manager.publish_tf(tf, delay)
 
-    def publish_odom_tf(self):
-        self.transform_manager.publish_odom_tf(self.worker_transform)   
+    def publish_odom_tf(self, robot_pose_kdl=None, stamp=None, delay=0):
+        if robot_pose_kdl is None:
+            robot_pose_kdl = self.tf_manager.transform_to_kdl(self.worker_transform)
+        self.tf_manager.publish_odom_tf(robot_pose_kdl, stamp, delay)   
+
+    def get_tf(self, src_frame, target_frame, stamp=None):
+        tf, result = self.tf_manager.get_tf(src_frame, target_frame, stamp)
+        return tf, result
 
     def do_logging(self, msg):
         self.get_logger().info("[{}] {}".format(self.node_name, msg))

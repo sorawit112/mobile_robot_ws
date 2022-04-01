@@ -12,8 +12,6 @@ class Worker(Enum):
     DOCK = 2
     TURTLE = 3
 
-    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
-
 class WorkerEntry(object):
     def __init__(self,
                     node, 
@@ -60,14 +58,11 @@ class WorkerEntry(object):
         else:
             self.do_logging('Goal failed to cancel')
 
-    def send_goal(self, order):
+    def send_goal(self, goal_msg):
         self.do_logging('send goal to ' + str(self.action_topic))
-        goal_msg = self.action_spec.Goal()
-        goal_msg.order = order
 
-        result = self.action_client.wait_for_server(5)
+        result = self.is_server_ready()
         if not result:
-            self.do_logging('Server ' + str(self.action_topic) + ' Not Active')
             return False
 
         self._send_goal_future = self.action_client.send_goal_async(
@@ -107,6 +102,7 @@ class WorkerManager(object):
     def __init__(self, node, transformanager, feedback_cb, result_cb):
         self.module_name = 'Worker_Manager'
         self.worker_dict = {}
+        self._dict = {0:Worker.IDLE, 1:Worker.NAV, 2:Worker.DOCK, 3:Worker.TURTLE}
         self.worker_executing = None
         self.transform_manager = transformanager
 
@@ -137,8 +133,8 @@ class WorkerManager(object):
         navigate_goal = NavigateAction.Goal()
         navigate_goal.src_pose.pose = last_pose
         navigate_goal.src_pose.header.stamp = self.node.get_clock().now().to_msg()
-
-        self.request_worker_execution(idle_worker, navigate_goal)
+        
+        idle_worker.send_goal(navigate_goal)
 
     def initial_first_worker(self):
         initial_worker = self.worker_dict[Worker.IDLE]
@@ -155,7 +151,13 @@ class WorkerManager(object):
         navigate_goal.src_pose.pose.position.x = self.node.start_pose[0]
         navigate_goal.src_pose.pose.position.y = self.node.start_pose[1]
 
-        self.request_worker_execution(initial_worker, navigate_goal)
+        x,y,z,w = self.transform_manager.quaternion_from_euler(0., 0., self.node.start_pose[2])
+        navigate_goal.src_pose.pose.orientation.x = x
+        navigate_goal.src_pose.pose.orientation.y = y
+        navigate_goal.src_pose.pose.orientation.z = z
+        navigate_goal.src_pose.pose.orientation.w = w
+
+        initial_worker.send_goal(navigate_goal)
 
     def create_workers(self):
         idle_worker = WorkerEntry(
@@ -202,6 +204,8 @@ class WorkerManager(object):
         goal = NavigateAction.Goal()
         goal.src_node = task.src_node
         goal.dst_node = task.dst_node
+
+        src_pose.header.stamp = self.node.get_clock().now().to_msg()
         goal.src_pose = src_pose
         
         dst_pose = PoseStamped()
@@ -209,7 +213,7 @@ class WorkerManager(object):
         dst_pose.header.frame_id = "map"
         dst_pose.pose.position.x = task.dst_pose[0]
         dst_pose.pose.position.y = task.dst_pose[1]
-        dst_pose.pose.position.z = 0
+        dst_pose.pose.position.z = 0.0
 
         goal.dst_pose = self.calculate_heading(src_pose, dst_pose)
 

@@ -1,4 +1,3 @@
-from queue import Empty
 import rclpy
 from rclpy.node import Node
 
