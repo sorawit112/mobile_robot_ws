@@ -8,6 +8,7 @@ from task_manager.graph_planner import GraphPlanner
 from std_srvs.srv import Empty
 from std_msgs.msg import Empty
 from action_msgs.msg import GoalStatus
+from custom_msgs.msg import UserMission
 from custom_msgs.srv import GetMapMetadata
 from geometry_msgs.msg import PoseStamped
 
@@ -30,7 +31,7 @@ class Executer(Node):
         self.getmap_cli = self.create_client(GetMapMetadata, 'get_map_metadata')
         self.request_map_metadata()
 
-        self.create_subscription(Empty, '/do_tasks', self.do_tasks, 1)
+        self.create_subscription(UserMission, '/do_tasks', self.do_tasks, 1)
               
         self.worker_manager.initial_first_worker()
         self.do_logging('Initialize Completed - ready to receive TASK !!')
@@ -48,27 +49,26 @@ class Executer(Node):
 
         self.graph_planner.set_map_metadata(future.result().metadata)
 
-    def do_tasks(self, _):
+    def do_tasks(self, msg):
         if not self.working:
             self.working = True
             self.do_logging('do tasks')
 
             current_pose = self.get_current_pose()
             #TODO receive start,goal station from user/fleet Manager
-            self.graph_planner.plan(current_pose, 'A', 'C') 
+            self.graph_planner.plan(current_pose, msg.station_start, msg.station_goal) 
 
             result = self.worker_manager.request_worker_cancel(Worker.IDLE)
             if result:
                 self.do_logging('cancel idle worker completed -> ready to do worker tasks')
             
     def do_worker_tasks(self):
-        self.do_logging('do worker tasks')
+        self.do_logging('--------------------do worker tasks---------------------------')
         if not self.graph_planner.tasks.empty():
             task = self.graph_planner.get()
             worker = self.worker_manager._dict[task.worker]
             navigate_goal = self.worker_manager.create_navigate_action_goal(task, self.last_pose)
             
-            print(worker, list(self.worker_manager.worker_dict.keys()))
             if worker not in list(self.worker_manager.worker_dict.keys()):
                 self.do_logging("worker is not registed --> rejected!!!")
                 return
@@ -91,6 +91,7 @@ class Executer(Node):
             self.do_logging("empty task list --> finish job")
             self.worker_manager.active_idle_worker(self.last_pose)
             self.working = False
+            self.do_logging("ready to receive new user task")
             
     def worker_actionlib_result(self, future, worker):
         result = future.result().result
@@ -98,10 +99,13 @@ class Executer(Node):
 
         self.last_pose = result.last_pose
         self.do_logging("Action Server Status : {}".format(status))
-        self.do_logging("'{}' Received Last Pose: {}".format(worker.worker_name, result.last_pose))
         
         if status == GoalStatus.STATUS_SUCCEEDED:
             self.do_logging("{} succeed".format(worker.worker_name))
+            self.do_logging("'{}' Received Last Pose: x:{}, y:{}".format(worker.worker_name, 
+                                                        result.last_pose.pose.position.x,
+                                                        result.last_pose.pose.position.y))
+            self.do_logging("")
             self.do_worker_tasks()
 
         elif status == GoalStatus.STATUS_ABORTED:
@@ -115,7 +119,7 @@ class Executer(Node):
             ## TODO: handeling canceled status
 
     def worker_actionlib_feedback(self, feedback, worker):
-        self.do_logging("'{0}' Received Feedback: x:{1}, y:{2}".format(worker.worker_name, 
+        self.do_logging("...............'{0}' Feedback: x:{1}, y:{2}".format(worker.worker_name, 
                                                     feedback.feedback.current_pose.pose.position.x,
                                                     feedback.feedback.current_pose.pose.position.y))
     

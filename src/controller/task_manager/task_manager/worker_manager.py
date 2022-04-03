@@ -12,6 +12,8 @@ class Worker(Enum):
     DOCK = 2
     TURTLE = 3
 
+    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
+
 class WorkerEntry(object):
     def __init__(self,
                     node, 
@@ -131,7 +133,7 @@ class WorkerManager(object):
 
         self.do_logging("active idle worker")
         navigate_goal = NavigateAction.Goal()
-        navigate_goal.src_pose.pose = last_pose
+        navigate_goal.src_pose = last_pose
         navigate_goal.src_pose.header.stamp = self.node.get_clock().now().to_msg()
         
         idle_worker.send_goal(navigate_goal)

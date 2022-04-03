@@ -33,9 +33,9 @@ class TurtleWorker(TemplateWorker):
         self.initial_controller(src_pose, dst_pose)
 
         # intitial localization
-        self.worker_transform, result = self.get_tf("map", "robot_pose")
-        if not result:
-            pass
+        robot_pose_tf, result = self.get_tf("map", "robot_pose")
+        if result:
+            self.worker_transform = robot_pose_tf
             # return self.abort_handle(goal_handle, "can't get tf map->robot_pose")
         stamp = self.get_clock().now()
         self.publish_tf()
@@ -69,23 +69,27 @@ class TurtleWorker(TemplateWorker):
         return self.succes_handle(goal_handle)
 
     def initial_controller(self, src_pose, dst_pose):
-        self.controller.goal_pose = Pose2D( x=dst_pose.pose.position.x,
-                                            y=dst_pose.pose.position.y,
-                                            theta=self.tf_manager.euler_from_quaternion(
+        _, _, goal_theta = self.tf_manager.euler_from_quaternion(
                                                         dst_pose.pose.orientation.x,
                                                         dst_pose.pose.orientation.y,
                                                         dst_pose.pose.orientation.z,
-                                                        dst_pose.pose.orientation.w))
-        self.controller.current_pose = Pose2D( x=src_pose.pose.position.x,
-                                               y=src_pose.pose.position.y,
-                                               theta=self.tf_manager.euler_from_quaternion(
+                                                        dst_pose.pose.orientation.w)
+        self.controller.goal_pose = Pose2D( x=dst_pose.pose.position.x,
+                                            y=dst_pose.pose.position.y,
+                                            theta=goal_theta)
+
+        _, _, current_theta = self.tf_manager.euler_from_quaternion(
                                                         src_pose.pose.orientation.x,
                                                         src_pose.pose.orientation.y,
                                                         src_pose.pose.orientation.z,
-                                                        src_pose.pose.orientation.w)) 
+                                                        src_pose.pose.orientation.w)
+        self.controller.current_pose = Pose2D( x=src_pose.pose.position.x,
+                                               y=src_pose.pose.position.y,
+                                               theta=current_theta) 
 
     def preexit_result(self):
         self.working = False
+        self.controller.goal_reach = False
 
         result = NavigateAction.Result()
         result.last_pose = self.current_pose

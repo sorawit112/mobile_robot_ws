@@ -1,0 +1,2 @@
+string station_start
+string station_goal

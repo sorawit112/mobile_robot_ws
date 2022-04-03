@@ -36,6 +36,7 @@ class Controller(object):
             self.current_pose.x = msg.x
             self.current_pose.y = msg.y
             self.current_pose.theta = msg.theta
+            # self.do_logging("current pose x:{}, y:{}, theta:{}".format(msg.x, msg.y, msg.theta))
 
     def control_loop(self):
         dp = np.array([self.goal_pose.x, self.goal_pose.y])-np.array([self.current_pose.x, self.current_pose.y])
