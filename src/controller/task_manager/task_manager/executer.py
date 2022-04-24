@@ -1,16 +1,17 @@
+from time import sleep, time
+from task_manager.topics import Topics
 import rclpy
 from rclpy.node import Node
+from rclpy.time import Time
 
 from rclpy.executors import MultiThreadedExecutor
 from task_manager.worker_manager import Worker, WorkerManager
 from task_manager.transform_manager import TransformManager
 from task_manager.graph_planner import GraphPlanner
-from std_srvs.srv import Empty
-from std_msgs.msg import Empty
 from action_msgs.msg import GoalStatus
-from custom_msgs.msg import UserMission
-from custom_msgs.srv import GetMapMetadata
+from custom_msgs.srv import GetMapMetadata, UserMission
 from geometry_msgs.msg import PoseStamped
+from rosgraph_msgs.msg import Clock
 
 class Executer(Node):
     def __init__(self):
@@ -19,8 +20,10 @@ class Executer(Node):
         self.working = False
         self.map_metadata = None
         self.start_pose = [5.5, 5.5, 0.0] #TODO: get from rosparam instead
+        self.current_time = Time()
         self.last_pose = PoseStamped()
 
+        self.topic = Topics()
         self.transform_manager = TransformManager(self)
         self.graph_planner = GraphPlanner(self, self.transform_manager)
         self.worker_manager = WorkerManager(self, 
@@ -31,7 +34,10 @@ class Executer(Node):
         self.getmap_cli = self.create_client(GetMapMetadata, 'get_map_metadata')
         self.request_map_metadata()
 
-        self.create_subscription(UserMission, '/do_tasks', self.do_tasks, 1)
+        sub1 = self.create_subscription(Clock, '/clock', self.on_clock, qos_profile=1)
+        # sub2 = self.create_subscription(UserMission, '/do_tasks', self.do_tasks, qos_profile=1)
+        self.usermission_srv = self.create_service(UserMission, self.topic.do_task, self.do_tasks_cb)
+        sub1
               
         self.worker_manager.initial_first_worker()
         self.do_logging('Initialize Completed - ready to receive TASK !!')
@@ -49,18 +55,28 @@ class Executer(Node):
 
         self.graph_planner.set_map_metadata(future.result().metadata)
 
-    def do_tasks(self, msg):
+    def on_clock(self, msg):
+        sec = msg.clock.sec
+        nanosec = msg.clock.nanosec
+        self.current_time = Time(seconds=sec, nanoseconds=nanosec)  
+
+    def do_tasks_cb(self, request, response):
         if not self.working:
             self.working = True
             self.do_logging('do tasks')
+            
+            station_start = request.user_mission.station_start
+            station_goal = request.user_mission.station_goal
 
             current_pose = self.get_current_pose()
-            #TODO receive start,goal station from user/fleet Manager
-            self.graph_planner.plan(current_pose, msg.station_start, msg.station_goal) 
+            self.graph_planner.plan(current_pose, station_start, station_goal) 
 
             result = self.worker_manager.request_worker_cancel(Worker.IDLE)
             if result:
                 self.do_logging('cancel idle worker completed -> ready to do worker tasks')
+            
+            response.success = result
+            return response
             
     def do_worker_tasks(self):
         self.do_logging('--------------------do worker tasks---------------------------')
@@ -124,7 +140,7 @@ class Executer(Node):
                                                     feedback.feedback.current_pose.pose.position.y))
     
     def get_current_pose(self):
-        current_tf, _ = self.transform_manager.get_tf('map', 'robot_pose') #TODO use base_footprint
+        current_tf, _ = self.transform_manager.get_tf('map', self.topic.base_footprint)
         current_pose = self.transform_manager.pose_stamped_from_tf_stamped(current_tf)
 
         return current_pose
@@ -137,7 +153,7 @@ def main(args=None):
 
     action_client = Executer()
     
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=5)
     rclpy.spin(action_client, executor=executor)
 
 

@@ -1,9 +1,6 @@
-import time
-from turtle import delay
-
 from custom_msgs.action import NavigateAction
 from task_manager.template_worker import TemplateWorker
-from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped, TransformStamped
 
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -14,25 +11,31 @@ class IdleWorker(TemplateWorker):
     def __init__(self):
         super().__init__(NODE_NAME, self.frequency, NavigateAction, self.execute_callback)
         self.current_pose = PoseStamped()
+        self.new_worker_kdl = None
 
         self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.on_initial_pose, qos_profile=1)
         
+        self.do_logging("initial complete!!")
+
     def on_initial_pose(self, msg):
         frame_id = msg.header.frame_id
-        self.do_logging("Initial pose received ! frame_id : {frame_id}")
+        self.do_logging("Initial pose received ! frame_id : {}".format(frame_id))
 
         if not self.working:
             self.do_logging("Not Active ! -> do nothing")
             return
 
         if 'map' in frame_id:
-            self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(msg.pose, 'robot_pose')
-            self.publish_tf()
+            pose_stamped = PoseStamped()
+            pose_stamped.header = msg.header
+            pose_stamped.pose = msg.pose.pose
+            self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(pose_stamped, self.topic.base_footprint)
+            self.odom_tf = self.tf_manager.odom_from_base_footprint(self.worker_transform)
+            
+            self.do_logging("receive new odom")
 
-            # TODO use when odom fram ready
-            # self.publish_odom_tf()
         else:
-            pass
+            self.do_logging('pass')
 
     def execute_callback(self, goal_handle):
         """Execute the goal."""
@@ -46,9 +49,10 @@ class IdleWorker(TemplateWorker):
 
         self.working = True
 
-        self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(self.current_pose, "robot_pose")
-        stamp = self.get_clock().now()
-        self.publish_tf() #publish map->robot_pose
+        self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(self.current_pose, self.topic.base_footprint)
+        self.odom_tf = self.tf_manager.odom_from_base_footprint(self.worker_transform)
+
+        self.publish_tf(tf=self.odom_tf)
         
         # Start executing the action
         while True: #infinite loop until cancel request from clients
@@ -58,27 +62,18 @@ class IdleWorker(TemplateWorker):
             if goal_handle.is_cancel_requested:
                 return self.preempt_handle(goal_handle)
 
-            # TODO: uncommend when odom frame is ready
-            # publish map -> odom 
-            # odom_tf, result = self.get_tf("map", "odom")
-            # if not result:
-            #     continue
-            # self.publish_tf(tf=odom_tf)
+            # get current_pose then publish map -> odom
+            robot_pose_tf, result = self.get_tf("map", self.topic.base_footprint)
+            if not result:
+                return self.abort_handle(goal_handle, "can't get tf map -> base_footprint")
 
-            # get current_pose then publish map -> robot_pose 
-            # TODO: use base_footprint instead of robot_pose when map->odom->base_footprint is ready
-            robot_pose_tf, result = self.get_tf("map", "robot_pose", stamp=stamp)
-            if result:
-                self.worker_transform = robot_pose_tf
-
-            stamp = self.get_clock().now()
-            self.publish_tf() # Maintain tf to next loop
+            # publish map -> odom for next loop
+            self.publish_tf(tf=self.odom_tf, delay=1.1/self.frequency)
 
             # Publish the feedback
-            current_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.worker_transform)
-            print(self.worker_transform.header.frame_id, self.worker_transform.child_frame_id)
+            self.current_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.worker_transform)
 
-            feedback_msg.current_pose = current_pose
+            feedback_msg.current_pose = self.current_pose
             goal_handle.publish_feedback(feedback_msg)
             self.do_logging('Publishing feedback : x:{0}, y:{1}'.format(
                                                         feedback_msg.current_pose.pose.position.x,
@@ -102,9 +97,9 @@ class IdleWorker(TemplateWorker):
         return result
 
     def abort_handle(self, goal_handle, msg=""):
-        self.do_logging("Goal aborted by {msg}")
+        self.do_logging("Goal aborted by {}".format(msg))
         result = self.preexit_result()
-        goal_handle.aborted()
+        goal_handle.abort()
 
         return result
 
@@ -114,7 +109,7 @@ def main(args=None):
 
     idle_worker = IdleWorker()
 
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=5)
     rclpy.spin(idle_worker, executor=executor)
 
     idle_worker.destroy()

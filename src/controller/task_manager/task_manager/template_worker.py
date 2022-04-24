@@ -1,7 +1,10 @@
 import threading
+from task_manager.topics import Topics
 from task_manager.transform_manager import TransformManager
 
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
+from rclpy.time import Time
+from rosgraph_msgs.msg import Clock
 from rclpy.node import Node
 
 class TemplateWorker(Node):
@@ -14,11 +17,15 @@ class TemplateWorker(Node):
         self._goal_handle = None
         self._goal_lock = threading.Lock()
         
+        self.topic = Topics()
+        self.current_time = Time()
         self.tf_manager = TransformManager(self)
-        self.worker_transform = self.tf_manager.create_tf('map', 'robot_pose')
+        self.worker_transform = self.tf_manager.create_tf('map', self.topic.base_footprint)
+        self.odom_tf = self.tf_manager.create_tf('map', self.topic.odom)
 
         self.working = False
         self.rate = self.create_rate(loop_frequency)
+        self.create_subscription(Clock, '/clock', self.on_clock, qos_profile=1)
 
         _execute_callback = execute_cb if execute_cb != None else self.default_execute_cb
         _goal_callback = goal_cb if goal_cb != None else self.default_goal_cb
@@ -27,12 +34,17 @@ class TemplateWorker(Node):
 
         self._action_server = ActionServer( self,
                                             action_spec,
-                                            '/'+str(self.node_name)+'_server',
+                                            self.topic.robot_name + '/'+ str(self.node_name) + '_server',
                                             execute_callback=_execute_callback,
                                             goal_callback=_goal_callback,
                                             handle_accepted_callback=_accepted_callback,
                                             cancel_callback=_cancel_callback)
-        
+    
+    def on_clock(self, msg):
+        sec = msg.clock.sec
+        nanosec = msg.clock.nanosec
+        self.current_time = Time(seconds=sec, nanoseconds=nanosec)
+
     def destroy(self):
         self._action_server.destroy()
         super().destroy_node()

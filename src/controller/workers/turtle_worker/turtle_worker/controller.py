@@ -5,8 +5,8 @@ import math
 
 
 class Controller(object):
-    k_v = 3.0
-    k_w = 10.0
+    k_v = 0.2
+    k_w = 0.5
 
     def __init__(self, worker):
         self.module_name = "controller"
@@ -16,27 +16,19 @@ class Controller(object):
         self.goal_pose = Pose2D()
         self.active = False
 
-        self.cmd_pub = self.worker.create_publisher(Twist, '/turtle1/cmd_vel', qos_profile=1)
-        self.worker.create_subscription(Pose,'/turtle1/pose',self.turtle_pose_cb, qos_profile=1)
+        self.cmd_pub = self.worker.create_publisher(Twist, self.worker.topic.cmd_vel, qos_profile=1)
     
-    def get_current_pose_stamped(self, pose_stamped):
-        pose_stamped.pose.position.x = self.current_pose.x
-        pose_stamped.pose.position.y = self.current_pose.y
+    def current_pose2D_from_pose_stamped(self, pose_stamped):
+        _,_,theta = self.worker.tf_manager.euler_from_quaternion(pose_stamped.pose.orientation.x,
+                                                                 pose_stamped.pose.orientation.y,
+                                                                 pose_stamped.pose.orientation.z,
+                                                                 pose_stamped.pose.orientation.w)
         
-        x,y,z,w = self.worker.tf_manager.quaternion_from_euler(0., 0., self.current_pose.theta)
-        pose_stamped.pose.orientation.x = x
-        pose_stamped.pose.orientation.y = y
-        pose_stamped.pose.orientation.z = z
-        pose_stamped.pose.orientation.w = w
+        self.current_pose.x = pose_stamped.pose.position.x
+        self.current_pose.y = pose_stamped.pose.position.y
+        self.current_pose.theta = theta
 
         return pose_stamped
-
-    def turtle_pose_cb(self, msg):
-        if self.worker.working:
-            self.current_pose.x = msg.x
-            self.current_pose.y = msg.y
-            self.current_pose.theta = msg.theta
-            # self.do_logging("current pose x:{}, y:{}, theta:{}".format(msg.x, msg.y, msg.theta))
 
     def control_loop(self):
         dp = np.array([self.goal_pose.x, self.goal_pose.y])-np.array([self.current_pose.x, self.current_pose.y])

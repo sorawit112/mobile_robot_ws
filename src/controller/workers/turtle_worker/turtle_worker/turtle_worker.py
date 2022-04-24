@@ -15,6 +15,8 @@ class TurtleWorker(TemplateWorker):
         super().__init__(NODE_NAME, self.frequency, NavigateAction, self.execute_callback)
         self.current_pose = PoseStamped()
         self.controller = Controller(self)
+
+        self.do_logging("initial complete!!")
         
     def execute_callback(self, goal_handle):
         """Execute the goal."""
@@ -33,12 +35,15 @@ class TurtleWorker(TemplateWorker):
         self.initial_controller(src_pose, dst_pose)
 
         # intitial localization
-        robot_pose_tf, result = self.get_tf("map", "robot_pose")
-        if result:
-            self.worker_transform = robot_pose_tf
-            # return self.abort_handle(goal_handle, "can't get tf map->robot_pose")
-        stamp = self.get_clock().now()
-        self.publish_tf()
+        self.worker_transform, result = self.get_tf("map", self.topic.base_footprint)
+        if not result:
+            self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(self.current_pose, self.topic.base_footprint)
+            self.do_logging("can't get tf map->base_footprint -> use tf from src_pose")
+        
+            # return self.abort_handle(goal_handle, "can't get tf map->base_footprint")
+
+        self.odom_tf = self.tf_manager.odom_from_base_footprint(self.worker_transform)
+        self.publish_tf(tf=self.odom_tf)
 
         # Start executing the action
         while not self.controller.goal_reach:
@@ -48,21 +53,24 @@ class TurtleWorker(TemplateWorker):
             if goal_handle.is_cancel_requested:
                 return self.preempt_handle(goal_handle)
 
+            # get current_pose then publish map -> odom
+            self.worker_transform, result = self.get_tf("map", self.topic.base_footprint)
+            if not result:
+                return self.abort_handle(goal_handle, "can't get tf map -> base_footprint")
+
+            self.current_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.worker_transform)
+            self.controller.current_pose2D_from_pose_stamped(self.current_pose)
+
             self.controller.control_loop()
-
-            # update current map->robot_pose
-            self.current_pose = self.controller.get_current_pose_stamped(self.current_pose)
-
-            _, result = self.get_tf("map", "robot_pose", stamp) 
-            self.worker_transform = self.tf_manager.tf_stamped_from_pose_stamped(self.current_pose, "robot_pose")
-            stamp = self.get_clock().now()
-            self.publish_tf()
 
             # Publish the feedback
             feedback_msg.current_pose = self.current_pose
             goal_handle.publish_feedback(feedback_msg)
-            self.do_logging('Publishing feedback: {0}'.format(feedback_msg.current_pose))
+            self.do_logging('Publishing feedback: x: {0}, y: {1}'.format(self.current_pose.pose.position.x,
+                                                                         self.current_pose.pose.position.y))      
 
+            # publish map -> odom for next loop
+            self.publish_tf(tf=self.odom_tf, delay=1.2/self.frequency)
             self.rate.sleep() #declare in super
 
         # goal succeed
@@ -104,9 +112,9 @@ class TurtleWorker(TemplateWorker):
         return result
 
     def abort_handle(self, goal_handle, msg=""):
-        self.do_logging("Goal aborted by {msg}")
+        self.do_logging("Goal aborted by {}".format(msg))
         result = self.preexit_result()
-        goal_handle.aborted()
+        goal_handle.abort()
 
         return result
 

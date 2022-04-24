@@ -1,4 +1,5 @@
 import rclpy
+from rclpy.time import Duration
 
 import PyKDL
 from tf2_ros import LookupException, ConnectivityException, ExtrapolationException
@@ -8,11 +9,11 @@ from tf2_ros.transform_broadcaster import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 from geometry_msgs.msg import TransformStamped, PoseStamped
 
-
 class TransformManager(object):
     def __init__(self, node):
         self.module_name = "transform manager"
         self.node = node
+        self.topic = node.topic
         self.tf_br = TransformBroadcaster(self.node)
         self.static_tf_br = StaticTransformBroadcaster(self.node)
 
@@ -20,25 +21,25 @@ class TransformManager(object):
         self.tf_lis = TransformListener(self.tf_buffer, self.node)
 
     def publish_tf(self, tf, delay=0):
-        time_stamp = self.node.get_clock().now() + rclpy.time.Duration(seconds=delay)
+        time_stamp = self.node.current_time + Duration(seconds=delay)
         tf.header.stamp = time_stamp.to_msg()
         self.tf_br.sendTransform(tf)
 
     def publish_odom_tf(self, robot_pose_kdl, stamp=None, delay=0):
-        base_footprint_tf = self.get_tf("odom", "base_footprint", stamp)[0]
+        base_footprint_tf = self.get_tf(self.topic.odom, self.topic.base_footprint, stamp)[0]
         base_footprint_kdl = self.transform_to_kdl(base_footprint_tf)
         base_footprint_kdl_inverse = base_footprint_kdl.Inverse()
         # map->robot_pose*base_footprint->odom ; robot_pose ~= base_footprint
         # map->odom
         odom_kdl = robot_pose_kdl*base_footprint_kdl_inverse
-        odom_tf = self.kdl_to_transform(odom_kdl, "map", "odom")
+        odom_tf = self.kdl_to_transform(odom_kdl, "map", self.topic.odom)
 
         self.publish_tf(odom_tf, delay)
 
     def get_tf(self, src_frame, target_frame, stamp=None):
         try:
             if stamp is None:
-                stamp = self.node.get_clock().now()
+                stamp = self.node.current_time
             tf = self.tf_buffer.lookup_transform(src_frame, 
                                                 target_frame, 
                                                 stamp.to_msg(), 
@@ -49,8 +50,18 @@ class TransformManager(object):
             self.do_logging('{}'.format(e))
             return None, False
 
+    def odom_from_base_footprint(self, tf):
+        robot_pose_kdl = self.transform_to_kdl(tf)
+        base_footprint_tf = self.get_tf(self.topic.odom, self.topic.base_footprint)[0]
+        base_footprint_kdl = self.transform_to_kdl(base_footprint_tf)
+        base_footprint_kdl_inverse = base_footprint_kdl.Inverse()
+        odom_kdl = robot_pose_kdl*base_footprint_kdl_inverse
+        odom_tf = self.kdl_to_transform(odom_kdl, "map", self.topic.odom)
+
+        return odom_tf
+
     @staticmethod
-    def kdl_to_transform(self, kdl, parent_frame, child_frame):
+    def kdl_to_transform(kdl, parent_frame, child_frame):
         tf = TransformStamped()
         tf.header.frame_id = parent_frame
         tf.child_frame_id = child_frame
@@ -67,7 +78,7 @@ class TransformManager(object):
         return tf
 
     @staticmethod
-    def transform_to_kdl(self, tf):
+    def transform_to_kdl(tf):
         translation = PyKDL.Vector(tf.transform.translation.x,
                                    tf.transform.translation.y,
                                    tf.transform.translation.z)

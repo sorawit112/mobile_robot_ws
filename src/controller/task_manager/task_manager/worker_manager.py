@@ -1,4 +1,5 @@
 import math
+from task_manager.topics import Topics
 from rclpy.action import ActionClient
 from custom_msgs.action import NavigateAction
 from task_manager.transform_manager import TransformManager
@@ -32,7 +33,7 @@ class WorkerEntry(object):
         self.result_callback = result_callback
         self.feedback_callback = feedback_callback
         self._goal_handle = None
-        self.action_topic = "/" + str(self.worker_name) + "_server"
+        self.action_topic = node.topic.robot_name + "/" + str(self.worker_name) + "_server"
         self.action_client = ActionClient(node, self.action_spec, self.action_topic)
 
     def is_server_ready(self):
