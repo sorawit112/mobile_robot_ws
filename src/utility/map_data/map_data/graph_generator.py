@@ -22,7 +22,7 @@ class GraphLoader(Node):
 
         self.visualize_pub = self.create_publisher(MarkerArray, 'visualize_graph', qos_profile=1)
         self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
-        self.create_timer(1, self.draw_graph_cb)
+        self.create_timer(10, self.draw_graph_cb)
 
     def handle_get_metadata(self, request, response):
         map_metadata = MapMetadata()
@@ -95,17 +95,45 @@ class GraphLoader(Node):
         marker.type = Marker.POINTS
         marker.action = Marker.ADD
 
-        marker.scale.x = 0.5
-        marker.scale.y = 0.5
+        marker.scale.x = 0.2
+        marker.scale.y = 0.2
         marker.scale.z = 0.
         marker.color.a = 1.0
-        marker.color.r = 1.0
-        marker.color.g = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 0.0
         marker.color.b = 1.0
 
         marker.points.clear()
+        text_id = 10
         for n,p in self._nodes.items():
             marker.points.append(Point(x=p[0], y=p[1], z=0.))
+
+            marker_text = Marker()
+            marker_text.header.frame_id = 'map'
+            marker_text.header.stamp = self.get_clock().now().to_msg()
+            marker_text.ns = "node_name"
+            marker_text.id = text_id
+            marker_text.type = Marker.TEXT_VIEW_FACING
+            marker_text.action = Marker.ADD
+            marker_text.scale.x = 0.2
+            marker_text.scale.y = 0.2
+            marker_text.scale.z = 0.3
+            marker_text.color.a = 1.0
+            marker_text.color.r = 0.0
+            marker_text.color.g = 0.0
+            marker_text.color.b = 0.0
+            marker_text.pose.position.x = p[0]-0.17
+            marker_text.pose.position.y = p[1]-0.17
+            marker_text.pose.position.z = 0.
+            marker_text.pose.orientation.x = 0.
+            marker_text.pose.orientation.y = 0.
+            marker_text.pose.orientation.z = 0.
+            marker_text.pose.orientation.w = 1.
+
+            marker_text.text = str(n)
+
+            marker_list.markers.append(marker_text)
+            text_id += 1
 
         marker_list.markers.append(marker)
 
@@ -144,8 +172,8 @@ def euc2d(p1,p2):
 
 def main(args=None):
     rclpy.init(args=args)
-
-    action_client = GraphLoader("map_turtlesim")
+    MAP_NAME = os.environ['MAP_NAME']
+    action_client = GraphLoader("map_"+str(MAP_NAME).lower())
 
     rclpy.spin(action_client)
 

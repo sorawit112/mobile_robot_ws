@@ -28,6 +28,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MapMetadata.msg"
   "msg/UserMission.msg"
   "srv/GetMapMetadata.srv"
+  "srv/UserMission.srv"
   "action/NavigateAction.action"
   DEPENDENCIES geometry_msgs std_msgs
 )
