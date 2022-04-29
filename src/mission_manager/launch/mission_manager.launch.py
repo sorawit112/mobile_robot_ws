@@ -16,9 +16,9 @@ def generate_launch_description():
             description='Use simulation (Gazebo) clock if true'),
 
         Node(
-            package='task_manager',
+            package='mission_manager',
             executable='mission_manager',
-            name='mission_executer',
+            name='mission_manager',
             parameters=[{'use_sim_time': use_sim_time}],
             output='screen'),
     ])

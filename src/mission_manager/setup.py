@@ -2,7 +2,7 @@ import os
 from glob import glob
 from setuptools import setup
 
-package_name = 'task_manager'
+package_name = 'mission_manager'
 
 setup(
     name=package_name,
@@ -23,7 +23,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'mission_manager = task_manager.mission_manager:main'
+            'mission_manager = mission_manager.mission_manager:main'
 
         ],
     },
