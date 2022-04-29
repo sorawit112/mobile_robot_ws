@@ -7,6 +7,7 @@ from tf2_ros.transform_listener import TransformListener
 from tf2_ros.transform_broadcaster import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 from geometry_msgs.msg import TransformStamped, PoseStamped
+from rclpy.duration import Duration
 
 class TransformManager(object):
     def __init__(self, node):
@@ -20,7 +21,7 @@ class TransformManager(object):
         self.tf_lis = TransformListener(self.tf_buffer, self.node)
 
     def publish_tf(self, tf, delay=0):
-        time_stamp = self.node.get_clock().now() + rclpy.time.Duration(seconds=delay)
+        time_stamp = self.node.get_clock().now() + Duration(seconds=delay)
         tf.header.stamp = time_stamp.to_msg()
         self.tf_br.sendTransform(tf)
 
@@ -42,7 +43,7 @@ class TransformManager(object):
             tf = self.tf_buffer.lookup_transform(src_frame, 
                                                 target_frame, 
                                                 stamp.to_msg(), 
-                                                timeout=rclpy.time.Duration(seconds=1.0))
+                                                timeout=Duration(seconds=1.0))
             return tf, True
         except (LookupException, ConnectivityException, ExtrapolationException) as e :
             self.do_logging('Could not get transform {0} to {1}'.format(src_frame, target_frame))
