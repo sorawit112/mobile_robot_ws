@@ -24,9 +24,8 @@ from geometry_msgs.msg import PoseStamped
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from lifecycle_msgs.srv import GetState
 from nav2_msgs.action import BackUp, Spin
-from nav2_msgs.action import ComputePathThroughPoses, ComputePathToPose
-from nav2_msgs.action import FollowPath, FollowWaypoints, NavigateThroughPoses, NavigateToPose
-from nav2_msgs.action import SmoothPath
+from nav2_msgs.action import ComputePathToPose
+from nav2_msgs.action import FollowPath, FollowWaypoints, NavigateToPose
 from nav2_msgs.srv import ClearEntireCostmap, GetCostmap, LoadMap, ManageLifecycleNodes
 
 import rclpy
@@ -62,17 +61,11 @@ class BasicNavigator(Node):
           depth=1)
 
         self.initial_pose_received = False
-        self.nav_through_poses_client = ActionClient(self,
-                                                     NavigateThroughPoses,
-                                                     'navigate_through_poses')
         self.nav_to_pose_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.follow_waypoints_client = ActionClient(self, FollowWaypoints, 'follow_waypoints')
         self.follow_path_client = ActionClient(self, FollowPath, 'follow_path')
         self.compute_path_to_pose_client = ActionClient(self, ComputePathToPose,
                                                         'compute_path_to_pose')
-        self.compute_path_through_poses_client = ActionClient(self, ComputePathThroughPoses,
-                                                              'compute_path_through_poses')
-        self.smoother_client = ActionClient(self, SmoothPath, 'smooth_path')
         self.spin_client = ActionClient(self, Spin, 'spin')
         self.backup_client = ActionClient(self, BackUp, 'backup')
         self.localization_pose_sub = self.create_subscription(PoseWithCovarianceStamped,
@@ -91,16 +84,13 @@ class BasicNavigator(Node):
         self.get_costmap_local_srv = self.create_client(GetCostmap, '/local_costmap/get_costmap')
 
     def destroyNode(self):
-        self.destroy_node()
+        self.destroyNode()
 
     def destroy_node(self):
-        self.nav_through_poses_client.destroy()
         self.nav_to_pose_client.destroy()
         self.follow_waypoints_client.destroy()
         self.follow_path_client.destroy()
         self.compute_path_to_pose_client.destroy()
-        self.compute_path_through_poses_client.destroy()
-        self.smoother_client.destroy()
         self.spin_client.destroy()
         self.backup_client.destroy()
         super().destroy_node()
@@ -110,29 +100,6 @@ class BasicNavigator(Node):
         self.initial_pose_received = False
         self.initial_pose = initial_pose
         self._setInitialPose()
-
-    def goThroughPoses(self, poses, behavior_tree=''):
-        """Send a `NavThroughPoses` action request."""
-        self.debug("Waiting for 'NavigateThroughPoses' action server")
-        while not self.nav_through_poses_client.wait_for_server(timeout_sec=1.0):
-            self.info("'NavigateThroughPoses' action server not available, waiting...")
-
-        goal_msg = NavigateThroughPoses.Goal()
-        goal_msg.poses = poses
-        goal_msg.behavior_tree = behavior_tree
-
-        self.info(f'Navigating with {len(goal_msg.poses)} goals....')
-        send_goal_future = self.nav_through_poses_client.send_goal_async(goal_msg,
-                                                                         self._feedbackCallback)
-        rclpy.spin_until_future_complete(self, send_goal_future)
-        self.goal_handle = send_goal_future.result()
-
-        if not self.goal_handle.accepted:
-            self.error(f'Goal with {len(poses)} poses was rejected!')
-            return False
-
-        self.result_future = self.goal_handle.get_result_async()
-        return True
 
     def goToPose(self, pose, behavior_tree=''):
         """Send a `NavToPose` action request."""
@@ -315,66 +282,6 @@ class BasicNavigator(Node):
 
         if not self.goal_handle.accepted:
             self.error('Get path was rejected!')
-            return None
-
-        self.result_future = self.goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, self.result_future)
-        self.status = self.result_future.result().status
-        if self.status != GoalStatus.STATUS_SUCCEEDED:
-            self.warn(f'Getting path failed with status code: {self.status}')
-            return None
-
-        return self.result_future.result().result.path
-
-    def getPathThroughPoses(self, start, goals, planner_id='', use_start=False):
-        """Send a `ComputePathThroughPoses` action request."""
-        self.debug("Waiting for 'ComputePathThroughPoses' action server")
-        while not self.compute_path_through_poses_client.wait_for_server(timeout_sec=1.0):
-            self.info("'ComputePathThroughPoses' action server not available, waiting...")
-
-        goal_msg = ComputePathThroughPoses.Goal()
-        goal_msg.start = start
-        goal_msg.goals = goals
-        goal_msg.planner_id = planner_id
-        goal_msg.use_start = use_start
-
-        self.info('Getting path...')
-        send_goal_future = self.compute_path_through_poses_client.send_goal_async(goal_msg)
-        rclpy.spin_until_future_complete(self, send_goal_future)
-        self.goal_handle = send_goal_future.result()
-
-        if not self.goal_handle.accepted:
-            self.error('Get path was rejected!')
-            return None
-
-        self.result_future = self.goal_handle.get_result_async()
-        rclpy.spin_until_future_complete(self, self.result_future)
-        self.status = self.result_future.result().status
-        if self.status != GoalStatus.STATUS_SUCCEEDED:
-            self.warn(f'Getting path failed with status code: {self.status}')
-            return None
-
-        return self.result_future.result().result.path
-
-    def smoothPath(self, path, smoother_id='', max_duration=2.0, check_for_collision=False):
-        """Send a `SmoothPath` action request."""
-        self.debug("Waiting for 'SmoothPath' action server")
-        while not self.smoother_client.wait_for_server(timeout_sec=1.0):
-            self.info("'SmoothPath' action server not available, waiting...")
-
-        goal_msg = SmoothPath.Goal()
-        goal_msg.path = path
-        goal_msg.max_smoothing_duration = rclpyDuration(seconds=max_duration).to_msg()
-        goal_msg.smoother_id = smoother_id
-        goal_msg.check_for_collisions = check_for_collision
-
-        self.info('Smoothing path...')
-        send_goal_future = self.smoother_client.send_goal_async(goal_msg)
-        rclpy.spin_until_future_complete(self, send_goal_future)
-        self.goal_handle = send_goal_future.result()
-
-        if not self.goal_handle.accepted:
-            self.error('Smooth path was rejected!')
             return None
 
         self.result_future = self.goal_handle.get_result_async()

@@ -70,7 +70,7 @@ class TurtleUnit(TemplateUnit):
 
             # publish map -> odom for next loop
             self.publish_tf(tf=self.odom_tf, delay=1.3/self.frequency)
-            self.rate.sleep() #declare in super
+            self.rate.sleep()
 
         # goal succeed
         return self.succes_handle(goal_handle)
