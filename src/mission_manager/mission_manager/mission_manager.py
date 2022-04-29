@@ -1,18 +1,15 @@
-from time import sleep, time
-from task_manager.topics import Topics
+
 import rclpy
 from rclpy.node import Node
-from rclpy.time import Time
 
 from rclpy.executors import MultiThreadedExecutor
-from task_manager.worker_manager import Worker, WorkerManager
-from task_manager.transform_manager import TransformManager
-from task_manager.graph_planner import GraphPlanner
+from mission_manager.topics import Topics
+from mission_manager.mission_executor import Unit, MissionExecutor
+from mission_manager.transform_manager import TransformManager
+from mission_manager.graph_planner import GraphPlanner
 from action_msgs.msg import GoalStatus
 from custom_msgs.srv import GetMapMetadata, UserMission
 from geometry_msgs.msg import PoseStamped
-from rosgraph_msgs.msg import Clock
-from std_msgs.msg import Header
 
 class MissionManager(Node):
     def __init__(self):
@@ -21,13 +18,12 @@ class MissionManager(Node):
         self.working = False
         self.map_metadata = None
         self.start_pose = [5.5, 5.5, 0.0] #TODO: get from rosparam instead
-        self.current_time = Time()
         self.last_pose = PoseStamped()
 
         self.topic = Topics()
         self.transform_manager = TransformManager(self)
         self.graph_planner = GraphPlanner(self, self.transform_manager)
-        self.worker_manager = WorkerManager(self, 
+        self.worker_manager = MissionExecutor(self, 
                                         self.transform_manager,
                                         self.worker_actionlib_feedback,
                                         self.worker_actionlib_result) 
@@ -64,7 +60,7 @@ class MissionManager(Node):
             current_pose = self.get_current_pose()
             self.graph_planner.plan(current_pose, station_start, station_goal) 
 
-            result = self.worker_manager.request_worker_cancel(Worker.IDLE)
+            result = self.worker_manager.request_worker_cancel(Unit.IDLE)
             if result:
                 self.do_logging('cancel idle worker completed -> ready to do worker tasks')
             
@@ -123,7 +119,7 @@ class MissionManager(Node):
 
         elif status == GoalStatus.STATUS_CANCELED:
             self.do_logging("{} canceled".format(worker.worker_name))
-            if worker.worker_id == Worker.IDLE:
+            if worker.worker_id == Unit.IDLE:
                 self.do_worker_tasks()
             ## TODO: handeling canceled status
 

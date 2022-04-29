@@ -1,9 +1,6 @@
-from task_manager.worker_manager import Worker
 from queue import Queue
 import networkx as nx
 import numpy as np
-
-from geometry_msgs.msg import PoseStamped
 
 class Task(object):
     def __init__(self, src_node, dst_node, src_pose, dst_pose, worker):
@@ -11,6 +8,7 @@ class Task(object):
         self.dst_node = dst_node
         self.src_pose = src_pose
         self.dst_pose = dst_pose
+        self.via_points = []
         self.worker = worker
 
 class GraphPlanner(object):

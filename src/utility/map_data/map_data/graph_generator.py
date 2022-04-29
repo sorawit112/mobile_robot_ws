@@ -1,12 +1,11 @@
 import rclpy
 from rclpy.node import Node
 
-from task_manager.worker_manager import Worker
+from mission_manager.mission_executor import Unit
 from visualization_msgs.msg import MarkerArray, Marker
 from custom_msgs.msg import MapMetadata, MapNode, MapEdge, MapStation
 from custom_msgs.srv import GetMapMetadata
 from geometry_msgs.msg import Point
-import networkx as nx
 import os, glob, pathlib
 import json
 import math
@@ -78,7 +77,7 @@ class GraphLoader(Node):
             dict_nodes[int(n)] = tuple(p)
         for e,d in data['edges'].items():
             dict_edges[int(e)] = tuple(d[0])
-            dict_edges_task[int(e)] = Worker._dict.value[str(d[1])]
+            dict_edges_task[int(e)] = Unit._dict.value[str(d[1])]
         for s,n in data['stations'].items():
             dict_stations[str(s)] = int(n)
 
