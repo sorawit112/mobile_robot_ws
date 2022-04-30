@@ -17,4 +17,5 @@ class Topics(object):
         
         # Service
         self.do_task = "/" + ROBOT_NAME + "/do_task"
+        self.get_map_metada = 'get_map_metadata'
         

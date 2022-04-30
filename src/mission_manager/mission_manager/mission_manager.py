@@ -6,136 +6,226 @@ from rclpy.executors import MultiThreadedExecutor
 from mission_manager.topics import Topics
 from mission_manager.mission_executor import Unit, MissionExecutor
 from mission_manager.transform_manager import TransformManager
-from mission_manager.graph_planner import GraphPlanner
+from mission_manager.graph_planner import GraphPlanner, Task
 from action_msgs.msg import GoalStatus
 from custom_msgs.srv import GetMapMetadata, UserMission
 from geometry_msgs.msg import PoseStamped
 
+NODE_NAME = 'mission_manager'
+
 class MissionManager(Node):
+    
     def __init__(self):
-        super().__init__('mission_manager')
+        super.__init__(node_name=NODE_NAME)
         self.module_name = 'mission_manager'
         self.working = False
         self.map_metadata = None
+        self.do_tasks_interval = 0.1 #sec
+        self.follow_via_point = True
+        
         self.start_pose = [5.5, 5.5, 0.0] #TODO: get from rosparam instead
         self.last_pose = PoseStamped()
 
         self.topic = Topics()
         self.transform_manager = TransformManager(self)
-        self.graph_planner = GraphPlanner(self, self.transform_manager)
-        self.worker_manager = MissionExecutor(self, 
-                                        self.transform_manager,
-                                        self.worker_actionlib_feedback,
-                                        self.worker_actionlib_result) 
+        self.graph_planner = GraphPlanner(self)
 
-        self.getmap_cli = self.create_client(GetMapMetadata, 'get_map_metadata')
+        self.mission_executor = MissionExecutor(self.start_pose)
+
+        self.user_mission_srv = self.create_service(UserMission, self.topic.do_task, self.user_mission_cb)
+
+        self.get_map_client = self.create_client(GetMapMetadata, self.topic.get_map_metada)
         self.request_map_metadata()
 
-        self.usermission_srv = self.create_service(UserMission, self.topic.do_task, self.do_tasks_cb)
-              
-        self.worker_manager.initial_first_worker()
+        self.mission_executor.initial_first_unit()
         self.do_logging('Initialize Completed - ready to receive TASK !!')
 
-    def request_map_metadata(self):
-        self.do_logging('wait for get map metdata service')
-        srv_ready = self.getmap_cli.wait_for_service()
-        if not srv_ready:
-            self.do_logging('get map metdata service not ready')
-            return 
-
-        self.do_logging('receive response from server')
-        future = self.getmap_cli.call_async(GetMapMetadata.Request())
-        rclpy.spin_until_future_complete(self, future)
-
-        self.graph_planner.set_map_metadata(future.result().metadata)
-
-    def do_tasks_cb(self, request, response):
-        if not self.working:
-            self.working = True
-            self.do_logging('do tasks')
-            
-            station_start = request.user_mission.station_start
-            station_goal = request.user_mission.station_goal
-
-            current_pose = self.get_current_pose()
-            self.graph_planner.plan(current_pose, station_start, station_goal) 
-
-            result = self.worker_manager.request_worker_cancel(Unit.IDLE)
-            if result:
-                self.do_logging('cancel idle worker completed -> ready to do worker tasks')
-            
-            response.success = result
-            return response
-            
-    def do_worker_tasks(self):
-        self.do_logging('--------------------do worker tasks---------------------------')
+    def do_task(self):
+        self.do_logging('--------------------do task---------------------------')
         if not self.graph_planner.tasks.empty():
             task = self.graph_planner.get()
-            worker = self.worker_manager._dict[task.worker]
-            navigate_goal = self.worker_manager.create_navigate_action_goal(task, self.last_pose)
+            unit = self.unit_from_task(task.unit)
             
-            if worker not in list(self.worker_manager.worker_dict.keys()):
-                self.do_logging("worker is not registed --> rejected!!!")
+            if unit not in list(self.mission_executor.unit_dict.keys()):
+                self.do_logging("unit is not registed --> rejected!!!")
                 return
 
-            self.do_logging("'{0}' start execute goal from nodes : {1} -> {2}".format(
-                                    self.worker_manager.worker_dict[worker].worker_name, 
-                                    task.src_node, task.dst_node))
-            self.worker_manager.log_worker_action_goal(navigate_goal)
+            if unit is Unit.NAV and self.follow_via_point:
+                task = self.create_followViaPoints_task(task)
 
-            result = self.worker_manager.request_worker_execution(worker, navigate_goal)
-
-            if not result:
-                self.do_logging("'{0}' is not Active set mission abort".format(self.worker_manager.worker_dict[worker].worker_name) )
+            status = self.mission_executor.request_unit_execute(unit, task, self.last_pose)
+        
+            if status:
+                self.task_timer = self.create_timer(self.do_tasks_interval, 
+                                                    self.do_task_interval_cb)
+            else:
+                self.do_logging("'{0}' not avaliable".format(
+                                    self.mission_executor.current_unit.unit_name))
                 
+                self.graph_planner.clear_tasks()
+                self.mission_executor.active_idle_unit()
                 """ TODO: 
-                    1. try to recovery worker from task (restart worker or something)
+                    1. try to recovery unit from task (restart unit or something)
                     2. excepted return aborted to fleet Management/tasks client
                 """
         else:
             self.do_logging("empty task list --> finish job")
-            self.worker_manager.active_idle_worker(self.last_pose)
+            self.mission_executor.active_idle_unit(self.last_pose)
+            self.task_timer.destroy()
             self.working = False
             self.do_logging("ready to receive new user task")
+
+
+    ########################################################################################
+    #############           Call-Back function
+    ########################################################################################
+    def user_mission_cb(self, request, response):
+        if not self.working:
+            self.working = True
+            self.do_logging('Receive User Mission -> DO TASKS')
             
-    def worker_actionlib_result(self, future, worker):
-        result = future.result().result
-        status = future.result().status
+            station_start = request.user_mission.station_start
+            station_goal = request.user_mission.station_goal
 
-        self.last_pose = result.last_pose
-        self.do_logging("Action Server Status : {}".format(status))
+            #cancel idle unit
+            result = self.mission_executor.request_current_unit_cancel() 
+            if result:
+                self.do_logging('cancel idle unit completed -> ready to do unit tasks')
+                self.last_pose = self.mission_executor.get_unit_result().last_pose
+                
+                if self.map_metadata: #map_metada not None
+                    while not self.request_map_metadata(time_out=1):
+                        self.do_logging("waitting map_metadata")
+
+                result = self.graph_planner.plan(self.last_pose, station_start, station_goal) 
+
+                if result:
+                    self.do_task()
+
+            response.success = result
+            return response
+        else:
+            self.do_logging('Receive request while current user mission is executing -> return Fail')
+            response.success = False
+            return response
+
+    def do_task_interval_cb(self):
+        if not self.mission_executor.is_unit_complete(): #tasks not completed
+            feedback = self.mission_executor.get_unit_feedback()
+            current_pose = feedback.current_pose
+            self.do_logging("'{0}' Received Feedback Current Pose: x:{1}, y:{2}".format(
+                                        self.mission_executor.current_unit.unit_name, 
+                                        current_pose.pose.position.x,
+                                        current_pose.pose.position.y))
+        else:
+            status = self.mission_executor.get_unit_status()
+            self.last_pose = self.mission_executor.get_unit_result().last_pose
         
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self.do_logging("{} succeed".format(worker.worker_name))
-            self.do_logging("'{}' Received Last Pose: x:{}, y:{}".format(worker.worker_name, 
-                                                        result.last_pose.pose.position.x,
-                                                        result.last_pose.pose.position.y))
-            self.do_logging("")
-            self.do_worker_tasks()
+            self.do_logging("Current Task is Completed -> status : {}".format(status))
+            self.task_timer.destroy()
 
-        elif status == GoalStatus.STATUS_ABORTED:
-            self.do_logging("{} aborted".format(worker.worker_name))
-            ## TODO: handeling aborted status
+            if status == GoalStatus.STATUS_SUCCEEDED:
+                self.do_logging("{0} succeed".format(
+                                        self.mission_executor.current_unit.unit_name))
+                self.do_logging("'{0}' Received Last Pose: x:{1}, y:{2}".format(
+                                        self.mission_executor.current_unit.unit_name, 
+                                        self.last_pose.pose.position.x,
+                                        self.last_pose.pose.position.y))
+                self.do_logging("")
+                self.do_task()
+                
+                return
 
-        elif status == GoalStatus.STATUS_CANCELED:
-            self.do_logging("{} canceled".format(worker.worker_name))
-            if worker.worker_id == Unit.IDLE:
-                self.do_worker_tasks()
-            ## TODO: handeling canceled status
+            elif status == GoalStatus.STATUS_ABORTED:
+                self.do_logging("{} aborted".format(
+                                        self.mission_executor.current_unit.unit_name))
+                ## TODO: handeling aborted status
 
-    def worker_actionlib_feedback(self, feedback, worker):
-        self.do_logging("...............'{0}' Feedback: x:{1}, y:{2}".format(worker.worker_name, 
-                                                    feedback.feedback.current_pose.pose.position.x,
-                                                    feedback.feedback.current_pose.pose.position.y))
-    
+            elif status == GoalStatus.STATUS_CANCELED:
+                self.do_logging("{} canceled".format(
+                                        self.mission_executor.current_unit.unit_name))
+                ## TODO: handeling canceled status
+
+            if self.mission_executor.current_unit is not Unit.IDLE:
+                self.graph_planner.clear_tasks()
+                self.mission_executor.active_idle_unit()
+
+
+    ########################################################################################
+    #############           Graph Loader, Graph Planner
+    ########################################################################################
+    def create_followViaPoints_task(self, task):
+        new_task = Task()
+        via_points = []
+
+        peek_task, result = self.graph_planner.peek()
+        if not result:
+            return task
+        peek_unit = self.unit_from_task(peek_task.unit)
+
+        while peek_unit is Unit.NAV:
+            next_task = self.graph_planner.get()
+            via_points.append(next_task.src_pose)
+
+            peek_task, result = self.graph_planner.peek()
+            if not result:
+                break
+            peek_unit = self.unit_from_task(peek_task.unit)
+
+        if len(via_points != 0):
+            last_task = next_task
+
+            new_task.src_node = task.src_node
+            new_task.dst_node = last_task.dst_node
+            new_task.src_pose = task.src_pose
+            new_task.dst_pose = last_task.dst_pose
+            new_task.via_points = via_points
+            new_task.unit = Unit.NAV
+
+            return new_task
+        
+        return task
+
+    def request_map_metadata(self, time_out=5):
+        self.do_logging('wait for get map metdata service')
+        srv_ready = self.get_map_client.wait_for_service(timeout_sec=time_out)
+        if not srv_ready:
+            self.do_logging('get map metdata service not ready')
+            return False
+
+        self.do_logging('receive response from server')
+        future = self.get_map_client.call_async(GetMapMetadata.Request())
+        rclpy.spin_until_future_complete(self, future)
+
+        self.map_metadata = future.result().metadata
+
+        self.graph_planner.set_map_metadata(self.map_metadata)
+        return True
+
+
+    ########################################################################################
+    #############           Utility Function
+    ########################################################################################
+    @staticmethod
+    def unit_from_task(unit):
+        unit_dict = {0:Unit.IDLE, 1:Unit.NAV, 2:Unit.DOCK, 3:Unit.TURTLE}
+
+        return unit_dict[unit]
+
     def get_current_pose(self):
         current_tf, _ = self.transform_manager.get_tf('map', self.topic.base_footprint)
         current_pose = self.transform_manager.pose_stamped_from_tf_stamped(current_tf)
 
         return current_pose
 
+
+    ########################################################################################
+    #############           Logging
+    ########################################################################################
+    
     def do_logging(self, msg):
         self.get_logger().info("[{0}] {1}".format(self.module_name, msg))
+
 
 def main(args=None):
     rclpy.init(args=args)

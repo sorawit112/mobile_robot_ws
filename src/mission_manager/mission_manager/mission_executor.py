@@ -5,7 +5,6 @@ from rclpy.action import ActionClient
 import math
 from enum import Enum
 
-from mission_manager.topics import Topics
 from mission_manager.transform_manager import TransformManager
 
 from action_msgs.msg import GoalStatus
@@ -52,11 +51,12 @@ class MissionUnitClient(object):
         
     def cancel_goal(self):
         """Cancel pending task request of any type."""
-        self.do_logging('Canceling current task.')
+        self.do_logging('Canceling {self.unit_name} task')
 
         if self.result_future:
             future = self.goal_handle.cancel_goal_async()
             rclpy.spin_until_future_complete(self, future)
+            self.result_future = future
 
             self.do_logging('Goal successfully canceled')
 
@@ -104,19 +104,20 @@ class MissionUnitClient(object):
     def do_logging(self, msg):
         self.node.get_logger().info("[{0}/{1}] {2}".format(self.module_name, self.unit_name, msg))
 
+NODE_NAME = 'mission_executor'
 
 class MissionExecutor(Node):
+    
     def __init__(self, start_pose):
-        self.module_name = 'mission_executor'
+        super().__init__(node_name=NODE_NAME)
+        self.module_name = NODE_NAME
         self.unit_dict = {}
         self.current_unit = None
-
-        self.transform_manager = TransformManager()
 
         self.start_pose = start_pose
 
         self.create_mission_units()
-
+        
     def destroyNode(self):
         """Destroy all units action_client and own node"""
         unit_list = list(self.unit_dict.values())
@@ -132,6 +133,8 @@ class MissionExecutor(Node):
         self.do_logging("request '{}' to execte".format(
                                                     self.current_unit.unit_name))
 
+        self.log_unit_action_goal(navigate_goal)
+
         return self.current_unit.send_goal(navigate_goal)
 
     def request_current_unit_cancel(self):
@@ -146,6 +149,10 @@ class MissionExecutor(Node):
 
     def get_unit_result(self):
         """Get the current unit executing result message."""
+        return self.current_unit.result_future.result().result
+    
+    def get_unit_status(self):
+        """Get the current unit executing status message."""
         return self.current_unit.status
 
     def get_unit_feedback(self):
@@ -180,7 +187,7 @@ class MissionExecutor(Node):
         navigate_goal.src_pose.pose.position.x = self.start_pose[0]
         navigate_goal.src_pose.pose.position.y = self.start_pose[1]
 
-        x,y,z,w = self.transform_manager.quaternion_from_euler(0., 0., self.start_pose[2])
+        x,y,z,w = TransformManager.quaternion_from_euler(0., 0., self.start_pose[2])
         navigate_goal.src_pose.pose.orientation.x = x
         navigate_goal.src_pose.pose.orientation.y = y
         navigate_goal.src_pose.pose.orientation.z = z
@@ -247,7 +254,7 @@ class MissionExecutor(Node):
 
         theta = math.atan2(y_diff, x_diff)
 
-        x,y,z,w = self.transform_manager.quaternion_from_euler(0,0,theta)
+        x,y,z,w = TransformManager.quaternion_from_euler(0,0,theta)
 
         dst_pose.pose.orientation.x = x
         dst_pose.pose.orientation.y = y

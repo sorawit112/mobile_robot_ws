@@ -3,20 +3,18 @@ import networkx as nx
 import numpy as np
 
 class Task(object):
-    def __init__(self, src_node, dst_node, src_pose, dst_pose, worker):
+    def __init__(self, src_node, dst_node, src_pose, dst_pose, unit):
         self.src_node = src_node
         self.dst_node = dst_node
         self.src_pose = src_pose
         self.dst_pose = dst_pose
         self.via_points = []
-        self.worker = worker
+        self.unit = unit
 
 class GraphPlanner(object):
-    def __init__(self, node, transform_manager):
+    def __init__(self, node):
         self.module_name = 'Graph Planner'
         self.node = node
-
-        self.transform_manager = transform_manager
 
         self.graph = nx.Graph(name="metadata") #graph._graph
         self.nodes = {} 
@@ -40,7 +38,7 @@ class GraphPlanner(object):
 
         for edge in edge_list:
             self.edges[edge.id] = [edge.src, edge.dst, edge.weight]
-            self.edges_task[edge.id] = edge.worker
+            self.edges_task[edge.id] = edge.unit
             self.graph.add_edge(edge.src, edge.dst, weight = edge.weight)
 
         for station in station_list:
@@ -88,8 +86,8 @@ class GraphPlanner(object):
 
             edge = self.edge_from_nodes(src_node, dst_node)
 
-            worker = self.edges_task[edge]
-            task = Task(src_node, dst_node, src_pose, dst_pose, worker)
+            unit = self.edges_task[edge]
+            task = Task(src_node, dst_node, src_pose, dst_pose, unit)
             self.tasks.put(task)           
         
         self.do_logging("plan !!SUCCEED")
@@ -113,8 +111,24 @@ class GraphPlanner(object):
         return list(self.graph.edges).index(node_in_edge)
 
     def get(self):
-        self.do_logging('peek first one from tasks queue')
+        """Pop first task from queue"""
+        self.do_logging('Pop first task from queue')
         return self.tasks.get_nowait()
+
+    def peek(self):
+        """Peek first task from queue"""
+        
+        if not self.tasks.empty():
+            self.do_logging('Peek first task from queue')
+            return self.tasks[0], True
+        else:
+            self.do_logging('Queue is empty cant peek!!')
+            return None, False
+
+    def clear(self):
+        """Clear Tasks Queue"""
+        self.do_logging('Clear Current Task Queue')
+        self.tasks = Queue(0)
 
     def do_logging(self, msg):
         self.node.get_logger().info("[{0}] {1}".format(self.module_name, msg))
@@ -124,4 +138,4 @@ if __name__ == "__main__":
     plan.plan(9,'A','e')
     while not plan.tasks.empty():
         task = plan.tasks.get()
-        print(task.src_node, task.dst_node, task.worker)
+        print(task.src_node, task.dst_node, task.unit)
