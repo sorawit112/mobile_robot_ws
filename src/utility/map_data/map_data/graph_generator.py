@@ -17,7 +17,7 @@ class GraphLoader(Node):
         super().__init__('graph_loader')
 
         self.map_name = map_name
-        self._nodes, self._edges, self._edges_worker, self._stations = self.load_metadata(map_name)
+        self._nodes, self._edges, self._edges_unit, self._stations = self.load_metadata(map_name)
 
         self.visualize_pub = self.create_publisher(MarkerArray, 'visualize_graph', qos_profile=1)
         self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
@@ -40,7 +40,7 @@ class GraphLoader(Node):
             edge.src = d[0]
             edge.dst = d[1]
             edge.weight = euc2d(self._nodes[d[0]],self._nodes[d[1]])
-            edge.worker = self._edges_worker[id]
+            edge.unit = self.unit[id]
             edge_list.append(edge)
 
         station_list = []
