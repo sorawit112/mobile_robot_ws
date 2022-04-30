@@ -20,7 +20,7 @@ class MissionManager(Node):
         self.module_name = 'mission_manager'
         self.working = False
         self.map_metadata = None
-        self.do_tasks_interval = 0.1 #sec
+        self.do_task_interval = 0.1 #sec
         self.follow_via_point = True
         
         self.start_pose = [5.5, 5.5, 0.0] #TODO: get from rosparam instead
@@ -56,7 +56,8 @@ class MissionManager(Node):
             status = self.mission_executor.request_unit_execute(unit, task, self.last_pose)
         
             if status:
-                self.task_timer = self.create_timer(self.do_tasks_interval, 
+                self.do_logging("Create Timer for checking status of current task")
+                self.task_timer = self.create_timer(self.do_task_interval, 
                                                     self.do_task_interval_cb)
             else:
                 self.do_logging("'{0}' not avaliable".format(
@@ -218,6 +219,10 @@ class MissionManager(Node):
 
         return current_pose
 
+    def destroyNode(self):
+        self.mission_executor.destroyNode()
+        super().destroy_node()
+
 
     ########################################################################################
     #############           Logging
@@ -238,7 +243,7 @@ def main(args=None):
             executor.spin()
         finally:
             executor.shutdown()
-            mission_manager.destroy_node()
+            mission_manager.destroyNode()
     finally:
         rclpy.shutdown()
 
