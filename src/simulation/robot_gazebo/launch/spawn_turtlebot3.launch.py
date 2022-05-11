@@ -47,8 +47,8 @@ def generate_launch_description():
         'y_pose', default_value='0.0',
         description='Specify y pose of the robot')
 
-    declare_robot_namespace = DeclareLaunchArgument(
-        'namespace', default_value='',
+    declare_namespace_cmd = DeclareLaunchArgument(
+        'namespace', default_value='0.0',
         description='Specify namespace of the robot')
 
     start_gazebo_ros_spawner_cmd = Node(
@@ -57,6 +57,7 @@ def generate_launch_description():
         arguments=[
             '-entity', TURTLEBOT3_MODEL,
             '-file', urdf_path,
+            '-robot_namespace', namespace,
             '-x', x_pose,
             '-y', y_pose,
             '-z', '0.01'
@@ -69,7 +70,7 @@ def generate_launch_description():
     # Declare the launch options
     ld.add_action(declare_x_position_cmd)
     ld.add_action(declare_y_position_cmd)
-    ld.add_action(declare_robot_namespace)
+    ld.add_action(declare_namespace_cmd)
 
     # Add any conditioned actions
     ld.add_action(start_gazebo_ros_spawner_cmd)

@@ -29,6 +29,7 @@ def generate_launch_description():
     TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
 
     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+    namespace = LaunchConfiguration('namespace', default='')
 
     urdf_file_name = 'turtlebot3_' + TURTLEBOT3_MODEL + '.urdf'
 
@@ -41,9 +42,6 @@ def generate_launch_description():
 
     with open(urdf, 'r') as infp:
         robot_desc = infp.read()
-    
-
-    rsp_params = {'robot_description': robot_desc}
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -51,10 +49,19 @@ def generate_launch_description():
             default_value='false',
             description='Use simulation (Gazebo) clock if true'),
 
+        DeclareLaunchArgument(
+            'namespace',
+            default_value=namespace,
+            description='Use simulation (Gazebo) clock if true'),
+
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
             name='robot_state_publisher',
+            namespace=namespace,
             output='screen',
-            parameters=[rsp_params, {'use_sim_time': use_sim_time}]),
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'robot_description': robot_desc}]
+            )
     ])
