@@ -1,7 +1,8 @@
+from matplotlib.transforms import Transform
 from turtle_unit.controller import Controller
 
-from custom_msgs.action import NavigateAction
-from task_manager.template_unit import TemplateUnit
+from nav2_msgs.action import NavigateToPose
+from mission_manager.template_unit import TemplateUnit
 from geometry_msgs.msg import PoseStamped, Pose2D
 
 import rclpy
@@ -11,7 +12,7 @@ NODE_NAME = 'turtle_unit'
 class TurtleUnit(TemplateUnit):
     frequency = 10
     def __init__(self):
-        super().__init__(NODE_NAME, self.frequency, NavigateAction, self.execute_callback)
+        super().__init__(NODE_NAME, self.frequency, NavigateToPose, self.execute_callback)
         self.current_pose = PoseStamped()
         self.controller = Controller(self)
 
@@ -21,28 +22,19 @@ class TurtleUnit(TemplateUnit):
         """Execute the goal."""
         self.do_logging('Executing goal...')
 
-        feedback_msg = NavigateAction.Feedback()
+        feedback_msg = NavigateToPose.Feedback()
         
-        dst_pose = goal_handle.request.dst_pose
-        src_pose = goal_handle.request.src_pose
+        dst_pose = goal_handle.request.pose
         
-        if dst_pose is None:
-            return self.abort_handle(goal_handle, "dst_pose is None")
-
-        self.working = True
-        self.current_pose = src_pose
-        self.initial_controller(src_pose, dst_pose)
-
         # intitial localization
         self.base_tf, result = self.get_tf("map", self.topic.base_footprint)
         if not result:
-            self.base_tf = self.tf_manager.tf_stamped_from_pose_stamped(self.current_pose, self.topic.base_footprint)
-            self.do_logging("can't get tf map->base_footprint -> use tf from src_pose")
+            return self.abort_handle(goal_handle, "can't get tf map->base_footprint")
         
-            # return self.abort_handle(goal_handle, "can't get tf map->base_footprint")
+        src_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.base_tf)
 
-        self.odom_tf = self.tf_manager.odom_from_base_footprint(self.base_tf)
-        self.publish_tf(tf=self.odom_tf)
+        self.working = True
+        self.initial_controller(src_pose, dst_pose)
 
         # Start executing the action
         while not self.controller.goal_reach:
@@ -58,6 +50,7 @@ class TurtleUnit(TemplateUnit):
                 return self.preempt_handle(goal_handle)
 
             self.current_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.base_tf)
+            #update controller current_pose2D
             self.controller.current_pose2D_from_pose_stamped(self.current_pose)
 
             self.controller.control_loop()
@@ -69,7 +62,6 @@ class TurtleUnit(TemplateUnit):
                                                                          self.current_pose.pose.position.y))      
 
             # publish map -> odom for next loop
-            self.publish_tf(tf=self.odom_tf, delay=1.3/self.frequency)
             self.rate.sleep()
 
         # goal succeed
@@ -97,10 +89,10 @@ class TurtleUnit(TemplateUnit):
     def preexit_result(self):
         self.working = False
         self.controller.goal_reach = False
+        self.controller.control_state = 0
+        self.controller.stop()
 
-        result = NavigateAction.Result()
-        result.last_pose = self.current_pose
-
+        result = NavigateToPose.Result()
         return result
 
     def preempt_handle(self, goal_handle):

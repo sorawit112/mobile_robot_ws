@@ -78,6 +78,7 @@ class GraphPlanner(object):
             self.do_logging("plan !!FAILED")
             return False
         
+        print(via_points)
         for i in range(len(via_points)-1):
             src_node = via_points[i]
             dst_node = via_points[i+1]
@@ -88,9 +89,10 @@ class GraphPlanner(object):
 
             unit = self.edges_task[edge]
             task = Task(src_node, dst_node, src_pose, dst_pose, unit)
-            self.tasks.put(task)           
+            self.tasks.put(task)      
         
         self.do_logging("plan !!SUCCEED")
+
         return True
 
     def nearest_node_from_pose(self, pose):
@@ -124,6 +126,11 @@ class GraphPlanner(object):
         else:
             self.do_logging('Queue is empty cant peek!!')
             return None, False
+
+    def show_task(self, task, unit_name):
+        self.do_logging(f'src_node : {task.src_node}')
+        self.do_logging(f'dst_node : {task.dst_node}')
+        self.do_logging(f'unit : {unit_name}')
 
     def clear(self):
         """Clear Tasks Queue"""

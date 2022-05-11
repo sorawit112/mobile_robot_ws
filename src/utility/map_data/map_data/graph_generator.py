@@ -23,7 +23,12 @@ class GraphLoader(Node):
         self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
         self.create_timer(10, self.draw_graph_cb)
 
+        self.get_logger().info('initial complete')
+
     def handle_get_metadata(self, request, response):
+
+        self.get_logger().info('receive request cmd')
+
         map_metadata = MapMetadata()
 
         node_list = []
@@ -40,7 +45,7 @@ class GraphLoader(Node):
             edge.src = d[0]
             edge.dst = d[1]
             edge.weight = euc2d(self._nodes[d[0]],self._nodes[d[1]])
-            edge.unit = self.unit[id]
+            edge.unit = self._edges_unit[id]
             edge_list.append(edge)
 
         station_list = []
@@ -56,6 +61,8 @@ class GraphLoader(Node):
         map_metadata.stations = station_list
 
         response.metadata = map_metadata
+
+        self.get_logger().info('response success')
 
         return response
 
@@ -104,6 +111,8 @@ class GraphLoader(Node):
 
         marker.points.clear()
         text_id = 10
+        station_name_list = list(self._stations.keys())
+        station_node_list = list(self._stations.values())
         for n,p in self._nodes.items():
             marker.points.append(Point(x=p[0], y=p[1], z=0.))
 
@@ -129,7 +138,10 @@ class GraphLoader(Node):
             marker_text.pose.orientation.z = 0.
             marker_text.pose.orientation.w = 1.
 
-            marker_text.text = str(n)
+            if n in station_node_list:
+                marker_text.text = station_name_list[station_node_list.index(n)]
+            else:
+                marker_text.text = str(n)
 
             marker_list.markers.append(marker_text)
             text_id += 1

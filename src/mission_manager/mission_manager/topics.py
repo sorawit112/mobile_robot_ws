@@ -7,13 +7,16 @@ class Topics(object):
         self.robot_name = "/" + ROBOT_NAME
 
         # Frame
-        self.odom = ROBOT_NAME + "/odom"
-        self.robot_pose = ROBOT_NAME + "/robot_pose"
-        self.base_footprint = ROBOT_NAME + "/base_footprint"
-        self.base_scan = ROBOT_NAME + "/base_scan"
+        # self.odom = ROBOT_NAME + "/odom"
+        # self.robot_pose = ROBOT_NAME + "/robot_pose"
+        # self.base_footprint = ROBOT_NAME + "/base_footprint"
+        # self.base_scan = ROBOT_NAME + "/base_scan"
+        self.odom = "odom"
+        self.base_footprint = "base_footprint"
         
         # Topics
-        self.cmd_vel = "/" + ROBOT_NAME + "/cmd_vel"
+        # self.cmd_vel = "/" + ROBOT_NAME + "/cmd_vel"
+        self.cmd_vel = "/cmd_vel"
         
         # Service
         self.do_task = "/" + ROBOT_NAME + "/do_task"

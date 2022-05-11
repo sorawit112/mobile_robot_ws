@@ -1,280 +1,515 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import Executor
 from rclpy.action import ActionClient
+from rclpy.duration import Duration as rclpyDuration
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 
 import math
+import time
+
 from enum import Enum
 
-from mission_manager.transform_manager import TransformManager
+from mission_manager.topics import Topics
 
 from action_msgs.msg import GoalStatus
-from geometry_msgs.msg import PoseStamped
-from custom_msgs.action import NavigateAction
+from builtin_interfaces.msg import Duration
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 
+
+from lifecycle_msgs.srv import GetState
+from std_srvs.srv import Trigger
+from nav2_msgs.srv import ClearEntireCostmap, GetCostmap, LoadMap, ManageLifecycleNodes
+
+from nav2_msgs.action import FollowWaypoints, NavigateToPose, Spin
 
 class Unit(Enum):
     """ units instance list"""
-    IDLE = 0
     NAV = 1
     DOCK = 2
     TURTLE = 3
 
-    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
+    _dict = {'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
 
 
-class MissionUnitClient(object):
-    def __init__(self,
-                 node, 
-                 unit_name, 
-                 unit_id, 
-                 action_spec, 
-                 ):
+class TaskResult(Enum):
+    UNKNOWN = 0
+    SUCCEEDED = 1
+    CANCELED = 2
+    FAILED = 3
 
-        self.module_name = "unit_client"
-        self.node = node
-        self.unit_name = unit_name
-        self.action_spec = action_spec
-        self.unit_id = unit_id
+
+class MissionExecutor(Node):
+
+    def __init__(self):
+        super().__init__(node_name='mission_executor')
+        self.initial_pose = PoseStamped()
+        self.initial_pose.header.frame_id = 'map'
         self.goal_handle = None
         self.result_future = None
         self.feedback = None
         self.status = None
+        self.latest_pose = PoseStamped()
+        self.topic = Topics()
 
-        self.action_topic = node.topic.robot_name + "/" + str(self.unit_name) + "_server"
-        self.action_client = ActionClient(node, self.action_spec, self.action_topic)
+        amcl_pose_qos = QoSProfile(
+          durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+          reliability=QoSReliabilityPolicy.RELIABLE,
+          history=QoSHistoryPolicy.KEEP_LAST,
+          depth=1)
 
-    def is_server_ready(self):
-        while not self.action_client.wait_for_server(timeout_sec=1.0):
-            self.do_logging("{self.action_topic} not available, waiting...")
+        self.initial_pose_received = False
         
-        self.do_logging("{self.action_topic} available and ready to receive goal")
+        # Nav2 Action Client
+        self.nav_to_pose_client = ActionClient(self, 
+                                               NavigateToPose, 
+                                               'navigate_to_pose')
+        self.follow_waypoints_client = ActionClient(self, 
+                                                    FollowWaypoints, 
+                                                    'follow_waypoints')
+        self.spin_client = ActionClient(self, 
+                                        Spin, 
+                                        'spin')
         
-    def cancel_goal(self):
-        """Cancel pending task request of any type."""
-        self.do_logging('Canceling {self.unit_name} task')
+        # Custom Action Client
+        self.docking_client = ActionClient(self, 
+                                           NavigateToPose, 
+                                           self.topic.robot_name+'/docking_unit_server')
+        self.turtle_client = ActionClient(self, 
+                                           NavigateToPose, 
+                                           self.topic.robot_name+'/turtle_unit_server')
+    
 
-        if self.result_future:
-            future = self.goal_handle.cancel_goal_async()
-            rclpy.spin_until_future_complete(self, future)
-            self.result_future = future
+        self.localization_pose_sub = self.create_subscription(PoseWithCovarianceStamped,
+                                                              'amcl_pose',
+                                                              self._amclPoseCallback,
+                                                              amcl_pose_qos)
+        self.initial_pose_pub = self.create_publisher(PoseWithCovarianceStamped,
+                                                      'initialpose',
+                                                      10)
+        self.change_maps_srv = self.create_client(LoadMap, '/map_server/load_map')
+        self.clear_costmap_global_srv = self.create_client(
+            ClearEntireCostmap, '/global_costmap/clear_entirely_global_costmap')
+        self.clear_costmap_local_srv = self.create_client(
+            ClearEntireCostmap, '/local_costmap/clear_entirely_local_costmap')
+        self.get_costmap_global_srv = self.create_client(GetCostmap, '/global_costmap/get_costmap')
+        self.get_costmap_local_srv = self.create_client(GetCostmap, '/local_costmap/get_costmap')
 
-            self.do_logging('Goal successfully canceled')
+    def destroyNode(self):
+        self.nav_to_pose_client.destroy()
+        self.follow_waypoints_client.destroy()
+        self.spin_client.destroy()
+        self.docking_client.destroy()
+        self.turtle_client.destroy()
+        super().destroy_node()
 
-        return True
+    def setInitialPose(self, initial_pose):
+        """Set the initial pose to the localization system."""
+        self.initial_pose_received = False
+        self.initial_pose = initial_pose
+        self.initial_pose.header.stamp = self.get_clock().now().to_msg()
+        self._setInitialPose()
 
-    def send_goal(self, goal_msg):
-        self.do_logging('send goal to ' + str(self.action_topic))
+    def goToPose(self, pose, behavior_tree=''):
+        """Send a `NavToPose` action request."""
+        self.debug("Waiting for 'NavigateToPose' action server")
+        while not self.nav_to_pose_client.wait_for_server(timeout_sec=1.0):
+            self.info("'NavigateToPose' action server not available, waiting...")
 
-        self.is_server_ready()
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = pose
+        goal_msg.behavior_tree = behavior_tree
 
-        send_goal_future = self.action_client.send_goal_async(goal_msg,
-                                                              self._feedbackCallback)
-
+        self.info('Navigating to goal: ' + str(pose.pose.position.x) + ' ' +
+                  str(pose.pose.position.y) + '...')
+        send_goal_future = self.nav_to_pose_client.send_goal_async(goal_msg,
+                                                                   self._feedbackCallback)
         rclpy.spin_until_future_complete(self, send_goal_future)
         self.goal_handle = send_goal_future.result()
 
         if not self.goal_handle.accepted:
-            self.do_logging('Goal rejected :(')
+            self.error('Goal to ' + str(pose.pose.position.x) + ' ' +
+                       str(pose.pose.position.y) + ' was rejected!')
             return False
-        
-        self.do_logging('Goal accepted :)')
 
         self.result_future = self.goal_handle.get_result_async()
         return True
 
-    def is_task_complete(self):
+    def followWaypoints(self, poses):
+        """Send a `FollowWaypoints` action request."""
+        self.debug("Waiting for 'FollowWaypoints' action server")
+        while not self.follow_waypoints_client.wait_for_server(timeout_sec=1.0):
+            self.info("'FollowWaypoints' action server not available, waiting...")
+
+        goal_msg = FollowWaypoints.Goal()
+        goal_msg.poses = poses
+
+        self.info(f'Following {len(goal_msg.poses)} goals....')
+        send_goal_future = self.follow_waypoints_client.send_goal_async(goal_msg,
+                                                                        self._feedbackCallback)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        self.goal_handle = send_goal_future.result()
+
+        if not self.goal_handle.accepted:
+            self.error(f'Following {len(poses)} waypoints request was rejected!')
+            return False
+
+        self.result_future = self.goal_handle.get_result_async()
+        return True
+
+    def spin(self, spin_dist=1.57):
+        self.debug("Waiting for 'Spin' action server")
+        while not self.spin_client.wait_for_server(timeout_sec=1.0):
+            self.info("'Spin' action server not available, waiting...")
+        goal_msg = Spin.Goal()
+        goal_msg.target_yaw = spin_dist
+
+        self.info(f'Spinning to angle {goal_msg.target_yaw}....')
+        send_goal_future = self.spin_client.send_goal_async(goal_msg, self._feedbackCallback)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        self.goal_handle = send_goal_future.result()
+
+        if not self.goal_handle.accepted:
+            self.error('Spin request was rejected!')
+            return False
+
+        self.result_future = self.goal_handle.get_result_async()
+        return True
+
+    def goDocking(self, pose):
+        """Send a `Docking` action request."""
+        self.debug("Waiting for 'Docking' action server")
+        while not self.docking_client.wait_for_server(timeout_sec=1.0):
+            self.info("'Docking' action server not available, waiting...")
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = pose
+        goal_msg.behavior_tree = ''
+
+        self.info('Navigating to goal: ' + str(pose.pose.position.x) + ' ' +
+                  str(pose.pose.position.y) + '...')
+        send_goal_future = self.docking_client.send_goal_async(goal_msg,
+                                                               self._feedbackCallback)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        self.goal_handle = send_goal_future.result()
+
+        if not self.goal_handle.accepted:
+            self.error('Goal to ' + str(pose.pose.position.x) + ' ' +
+                       str(pose.pose.position.y) + ' was rejected!')
+            return False
+
+        self.result_future = self.goal_handle.get_result_async()
+        return True
+
+    def goTurtle(self, pose):
+        """Send a `Turtle Control` action request."""
+        self.debug("Waiting for 'Turtle Control' action server")
+        while not self.turtle_client.wait_for_server(timeout_sec=1.0):
+            self.info("'Turtle Control' action server not available, waiting...")
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = pose
+        goal_msg.behavior_tree = ''
+
+        self.info('Navigating to goal: ' + str(pose.pose.position.x) + ' ' +
+                  str(pose.pose.position.y) + '...')
+        send_goal_future = self.turtle_client.send_goal_async(goal_msg,
+                                                              self._feedbackCallback)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        self.goal_handle = send_goal_future.result()
+
+        if not self.goal_handle.accepted:
+            self.error('Goal to ' + str(pose.pose.position.x) + ' ' +
+                        str(pose.pose.position.y) + ' was rejected!')
+            return False
+
+        self.result_future = self.goal_handle.get_result_async()
+        return True
+
+    def cancelTask(self):
+        """Cancel pending task request of any type."""
+        self.info('Canceling current task.')
+        if self.result_future:
+            future = self.goal_handle.cancel_goal_async()
+            rclpy.spin_until_future_complete(self, future)
+        return
+
+    def isTaskComplete(self):
+        """Check if the task request of any type is complete yet."""
         if not self.result_future:
             # task was cancelled or completed
             return True
-
         rclpy.spin_until_future_complete(self, self.result_future, timeout_sec=0.10)
         if self.result_future.result():
             self.status = self.result_future.result().status
             if self.status != GoalStatus.STATUS_SUCCEEDED:
-                self.do_logging('Task with failed with status code: {self.status}')
+                self.debug(f'Task with failed with status code: {self.status}')
                 return True
         else:
             # Timed out, still processing, not complete yet
             return False
 
+        self.debug('Task succeeded!')
+        return True
+
+    def getFeedback(self):
+        """Get the pending action feedback message."""
+        return self.feedback
+    
+    def reset_module(self):
+        self.goal_handle = None
+        self.result_future = None
+        self.feedback = None
+        self.status = None
+
+    def waitUntilNav2Active(self, navigator='bt_navigator', localizer='amcl'):
+        """Block until the full navigation system is up and running."""
+        self._waitForNodeToActivate(localizer)
+        if localizer == 'amcl':
+            self._waitForInitialPose()
+        self._waitForNodeToActivate(navigator)
+        self.info('Nav2 is ready for use!')
+        return
+
+    def changeMap(self, map_filepath):
+        """Change the current static map in the map server."""
+        while not self.change_maps_srv.wait_for_service(timeout_sec=1.0):
+            self.info('change map service not available, waiting...')
+        req = LoadMap.Request()
+        req.map_url = map_filepath
+        future = self.change_maps_srv.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        status = future.result().result
+        if status != LoadMap.Response.RESULT_SUCCESS:
+            self.error('Change map request failed!')
+        else:
+            self.info('Change map request was successful!')
+        return
+
+    def clearAllCostmaps(self):
+        """Clear all costmaps."""
+        self.clearLocalCostmap()
+        self.clearGlobalCostmap()
+        return
+
+    def clearLocalCostmap(self):
+        """Clear local costmap."""
+        while not self.clear_costmap_local_srv.wait_for_service(timeout_sec=1.0):
+            self.info('Clear local costmaps service not available, waiting...')
+        req = ClearEntireCostmap.Request()
+        future = self.clear_costmap_local_srv.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        return
+
+    def clearGlobalCostmap(self):
+        """Clear global costmap."""
+        while not self.clear_costmap_global_srv.wait_for_service(timeout_sec=1.0):
+            self.info('Clear global costmaps service not available, waiting...')
+        req = ClearEntireCostmap.Request()
+        future = self.clear_costmap_global_srv.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        return
+
+    def getGlobalCostmap(self):
+        """Get the global costmap."""
+        while not self.get_costmap_global_srv.wait_for_service(timeout_sec=1.0):
+            self.info('Get global costmaps service not available, waiting...')
+        req = GetCostmap.Request()
+        future = self.get_costmap_global_srv.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        return future.result().map
+
+    def getLocalCostmap(self):
+        """Get the local costmap."""
+        while not self.get_costmap_local_srv.wait_for_service(timeout_sec=1.0):
+            self.info('Get local costmaps service not available, waiting...')
+        req = GetCostmap.Request()
+        future = self.get_costmap_local_srv.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        return future.result().map
+
+    def pause_localizer(self):
+        # check is localizer is pause
+        check_active_srv_name = '/lifecycle_manager_localization/is_active'
+        manage_node_srv_name = '/lifecycle_manager_localization/manage_nodes'
+        self.info(f'Pause {check_active_srv_name}')
+        if not self._isLifeCycleActive(check_active_srv_name):
+            self.info('amcl is not active yet -> return')
+            return
+
+        self.manage_lifecycle_node(manage_node_srv_name, ManageLifecycleNodes.Request.PAUSE)
+
+    def resume_localizer(self):
+        # check is localizer is pause
+        check_active_srv_name = '/lifecycle_manager_localization/is_active'
+        manage_node_srv_name = '/lifecycle_manager_localization/manage_nodes'
+        self.info(f'Resume {check_active_srv_name}')
+        if self._isLifeCycleActive(check_active_srv_name):
+            self.info('amcl is already active')
+            return
+
+        self.manage_lifecycle_node(manage_node_srv_name, ManageLifecycleNodes.Request.RESUME)   
+        self._waitForNodeToActivate('amcl')
+
+    def pause_navigator(self):
+        # check is localizer is pause
+        check_active_srv_name = '/lifecycle_manager_navigation/is_active'
+        manage_node_srv_name = '/lifecycle_manager_navigation/manage_nodes'
+        self.info(f'Pause {check_active_srv_name}')
+        if not self._isLifeCycleActive(check_active_srv_name):
+            self.info('navigator is not active yet -> return')
+            return
+
+        self.manage_lifecycle_node(manage_node_srv_name, ManageLifecycleNodes.Request.PAUSE)
+
+    def resume_navigator(self):
+        # check is localizer is pause
+        check_active_srv_name = '/lifecycle_manager_navigation/is_active'
+        manage_node_srv_name = '/lifecycle_manager_navigation/manage_nodes'
+        self.info(f'Resume {check_active_srv_name}')
+        if self._isLifeCycleActive(check_active_srv_name):
+            self.info('navigator is already active')
+            return 
+
+        self.manage_lifecycle_node(manage_node_srv_name, ManageLifecycleNodes.Request.RESUME)
+        self._waitForNodeToActivate('bt_navigator')
+
+    def manage_lifecycle_node(self, srv_name, cmd):
+        self.info('Managelifecycle nodes based on lifecycle_manager.')
+        self.info(f'{srv_name}')
+
+        mgr_client = self.create_client(ManageLifecycleNodes, srv_name)
+        while not mgr_client.wait_for_service(timeout_sec=1.0):
+            self.info(f'{srv_name} service not available, waiting...')
+        req = ManageLifecycleNodes.Request()
+        req.command = cmd
+        future = mgr_client.call_async(req)
+
+        while True:
+            rclpy.spin_until_future_complete(self, future, timeout_sec=0.10)
+            if future.result() is not None:
+                self.info(f'mgr response : {future.result().success}')
+                return future.result().success
+            else:
+                self.info('waitting mgr response')
+
+    def lifecycleStartup(self):
+        """Startup nav2 lifecycle system."""
+        self.info('Starting up lifecycle nodes based on lifecycle_manager.')
+        for srv_name, srv_type in self.get_service_names_and_types():
+            if srv_type[0] == 'nav2_msgs/srv/ManageLifecycleNodes':
+                self.info(f'Starting up {srv_name}')
+                mgr_client = self.create_client(ManageLifecycleNodes, srv_name)
+                while not mgr_client.wait_for_service(timeout_sec=1.0):
+                    self.info(f'{srv_name} service not available, waiting...')
+                req = ManageLifecycleNodes.Request()
+                req.command = ManageLifecycleNodes.Request.STARTUP
+                future = mgr_client.call_async(req)
+
+                # starting up requires a full map->odom->base_link TF tree
+                # so if we're not successful, try forwarding the initial pose
+                while True:
+                    rclpy.spin_until_future_complete(self, future, timeout_sec=0.10)
+                    if not future:
+                        self._waitForInitialPose()
+                    else:
+                        break
+        self.info('Nav2 is ready for use!')
+        return
+
+    def lifecycleShutdown(self):
+        """Shutdown nav2 lifecycle system."""
+        self.info('Shutting down lifecycle nodes based on lifecycle_manager.')
+        for srv_name, srv_type in self.get_service_names_and_types():
+            if srv_type[0] == 'nav2_msgs/srv/ManageLifecycleNodes':
+                self.info(f'Shutting down {srv_name}')
+                mgr_client = self.create_client(ManageLifecycleNodes, srv_name)
+                while not mgr_client.wait_for_service(timeout_sec=1.0):
+                    self.info(f'{srv_name} service not available, waiting...')
+                req = ManageLifecycleNodes.Request()
+                req.command = ManageLifecycleNodes.Request.SHUTDOWN
+                future = mgr_client.call_async(req)
+                rclpy.spin_until_future_complete(self, future)
+                future.result()
+        return
+
+    def _isLifeCycleActive(self, srv_name):
+        state_client = self.create_client(Trigger, srv_name)
+        while not state_client.wait_for_service(timeout_sec=1.0):
+            self.info(f'{srv_name} service not available, waiting...')
+        self.info(f'{srv_name} is ready')
+
+        req = Trigger.Request()
+        self.debug(f'Getting {srv_name} state...')
+        future = state_client.call_async(req)
+        while True:
+            rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
+            if future.result() is not None:
+                return future.result().success   
+            else:
+                self.info(f'timeout call service {srv_name}')
+
+    def _waitForNodeToActivate(self, node_name):
+        # Waits for the node within the tester namespace to become active
+        self.debug(f'Waiting for {node_name} to become active..')
+        node_service = f'{node_name}/get_state'
+        state_client = self.create_client(GetState, node_service)
+        while not state_client.wait_for_service(timeout_sec=1.0):
+            self.info(f'{node_service} service not available, waiting...')
+
+        req = GetState.Request()
+        state = 'unknown'
+        while state != 'active':
+            self.debug(f'Getting {node_name} state...')
+            future = state_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+            if future.result() is not None:
+                state = future.result().current_state.label
+                self.debug(f'Result of get_state: {state}')
+            time.sleep(2)
+        return
+
+    def _waitForInitialPose(self):
+        while not self.initial_pose_received:
+            self.info('Setting initial pose')
+            self._setInitialPose()
+            self.info('Waiting for amcl_pose to be received')
+            rclpy.spin_once(self, timeout_sec=1.0)
+        return
+
+    def _amclPoseCallback(self, msg):
+        self.debug('Received amcl pose')
+        self.initial_pose_received = True
+        self.latest_pose.pose = msg.pose.pose
+        return
+
     def _feedbackCallback(self, msg):
+        self.debug('Received action feedback message')
         self.feedback = msg.feedback
         return
 
-    def do_logging(self, msg):
-        self.node.get_logger().info("[{0}/{1}] {2}".format(self.module_name, self.unit_name, msg))
+    def _setInitialPose(self):
+        msg = PoseWithCovarianceStamped()
+        msg.pose.pose = self.initial_pose.pose
+        msg.header.frame_id = self.initial_pose.header.frame_id
+        msg.header.stamp = self.initial_pose.header.stamp
+        self.info('Publishing Initial Pose')
+        self.initial_pose_pub.publish(msg)
+        return
 
-NODE_NAME = 'mission_executor'
+    def info(self, msg):
+        self.get_logger().info(msg)
+        return
 
-class MissionExecutor(Node):
-    
-    def __init__(self, start_pose):
-        super().__init__(node_name=NODE_NAME)
-        self.module_name = NODE_NAME
-        self.unit_dict = {}
-        self.current_unit = None
+    def warn(self, msg):
+        self.get_logger().warn(msg)
+        return
 
-        self.start_pose = start_pose
+    def error(self, msg):
+        self.get_logger().error(msg)
+        return
 
-        self.create_mission_units()
-        
-    def destroyNode(self):
-        """Destroy all units action_client and own node"""
-        unit_list = list(self.unit_dict.values())
-        for unit_client in unit_list:
-            unit_client.action_client.destroy()
-        super().destroy_node()
-
-    def request_unit_execute(self, unit, task, last_pose):
-        """ Requst input unit to execute"""
-        navigate_goal = self.create_navigate_action_goal(task, last_pose)
-        self.current_unit = self.unit_dict[unit]
-        
-        self.do_logging("request '{}' to execte".format(
-                                                    self.current_unit.unit_name))
-
-        self.log_unit_action_goal(navigate_goal)
-
-        return self.current_unit.send_goal(navigate_goal)
-
-    def request_current_unit_cancel(self):
-        """Cancel current unit executing task"""
-        self.do_logging("request '{}' to cancel".format(
-                                                    self.current_unit.unit_name))
-        return self.current_unit.cancel_goal()
-
-    def is_unit_complete(self):
-        """Check if the current unit executing is complete yet."""
-        return self.current_unit.is_task_complete()
-
-    def get_unit_result(self):
-        """Get the current unit executing result message."""
-        return self.current_unit.result_future.result().result
-    
-    def get_unit_status(self):
-        """Get the current unit executing status message."""
-        return self.current_unit.status
-
-    def get_unit_feedback(self):
-        """Get the current unit executing feedback message."""
-        return self.current_unit.feedback
-    
-    def active_idle_unit(self, last_pose):
-        idle_unit = self.unit_dict[Unit.IDLE]
-        self.current_unit = idle_unit
-
-        self.do_logging("active idle unit")
-        navigate_goal = NavigateAction.Goal()
-        navigate_goal.src_pose = last_pose
-        navigate_goal.src_pose.header.stamp = self.get_clock().now().to_msg()
-        
-        idle_unit.send_goal(navigate_goal)
-
-    def initial_first_unit(self):
-        initial_unit = self.unit_dict[Unit.IDLE]
-        self.current_unit = initial_unit
-
-        server_ready = initial_unit.is_server_ready()
-
-        if not server_ready:
-            self.do_logging("initial first unit FAILED!!!")
-            return
-        
-        self.do_logging("initial first unit")
-        navigate_goal = NavigateAction.Goal()
-        navigate_goal.src_pose.header.stamp = self.get_clock().now().to_msg()
-        navigate_goal.src_pose.header.frame_id = "map"
-        navigate_goal.src_pose.pose.position.x = self.start_pose[0]
-        navigate_goal.src_pose.pose.position.y = self.start_pose[1]
-
-        x,y,z,w = TransformManager.quaternion_from_euler(0., 0., self.start_pose[2])
-        navigate_goal.src_pose.pose.orientation.x = x
-        navigate_goal.src_pose.pose.orientation.y = y
-        navigate_goal.src_pose.pose.orientation.z = z
-        navigate_goal.src_pose.pose.orientation.w = w
-
-        initial_unit.send_goal(navigate_goal)
-
-    def create_mission_units(self):
-        idle_unit = MissionUnitClient(
-                            self,
-                            "idle_unit",
-                            unit_id=Unit.IDLE,
-                            action_spec=NavigateAction
-                            )
-
-        nav_unit = MissionUnitClient(
-                            self,
-                            "nav_unit",
-                            unit_id=Unit.NAV,
-                            action_spec=NavigateAction
-                            )
-
-        docking_unit = MissionUnitClient(
-                            self,
-                            "docking_unit",
-                            unit_id=Unit.DOCK,
-                            action_spec=NavigateAction
-                            )
-
-        turtle_unit = MissionUnitClient(self,
-                            "turtle_unit",
-                            unit_id=Unit.TURTLE,
-                            action_spec=NavigateAction
-                            )
-
-        self.unit_dict[Unit.IDLE] = idle_unit
-        self.unit_dict[Unit.NAV] = nav_unit
-        self.unit_dict[Unit.DOCK] = docking_unit
-        self.unit_dict[Unit.TURTLE] = turtle_unit
-
-    def create_navigate_action_goal(self, task, src_pose):
-        goal = NavigateAction.Goal()
-        goal.src_node = task.src_node
-        goal.dst_node = task.dst_node
-
-        src_pose.header.stamp = self.get_clock().now().to_msg()
-        goal.src_pose = src_pose
-        
-        dst_pose = PoseStamped()
-        dst_pose.header.stamp = self.get_clock().now().to_msg()
-        dst_pose.header.frame_id = "map"
-        dst_pose.pose.position.x = task.dst_pose[0]
-        dst_pose.pose.position.y = task.dst_pose[1]
-        dst_pose.pose.position.z = 0.0
-
-        goal.dst_pose = self.calculate_heading(src_pose, dst_pose)
-        goal.via_points = task.via_points
-
-        return goal
-
-    def calculate_heading(self, src_pose, dst_pose):
-        y_diff = dst_pose.pose.position.y - dst_pose.pose.position.y
-        x_diff = src_pose.pose.position.x - src_pose.pose.position.x
-
-        theta = math.atan2(y_diff, x_diff)
-
-        x,y,z,w = TransformManager.quaternion_from_euler(0,0,theta)
-
-        dst_pose.pose.orientation.x = x
-        dst_pose.pose.orientation.y = y
-        dst_pose.pose.orientation.z = z
-        dst_pose.pose.orientation.w = w
-
-        return dst_pose
-
-    def log_unit_action_goal(self, goal):
-        self.do_logging("FROM : [{}] ({}, {})".format(
-            goal.src_node,
-            goal.src_pose.pose.position.x,
-            goal.src_pose.pose.position.y,
-        ))
-
-        self.do_logging("TO : [{}] ({}, {})".format(
-            goal.dst_node,
-            goal.dst_pose.pose.position.x,
-            goal.dst_pose.pose.position.y,
-        ))
-
-    def do_logging(self, msg):
-        self.get_logger().info("[{0}] {1}".format(self.module_name, msg))
+    def debug(self, msg):
+        self.get_logger().debug(msg)
+        return

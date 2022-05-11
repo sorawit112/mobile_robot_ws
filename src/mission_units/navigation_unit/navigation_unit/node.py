@@ -4,7 +4,7 @@ from rclpy.duration import Duration
 from rclpy.executors import MultiThreadedExecutor
 
 from custom_msgs.action import NavigateAction
-from task_manager.template_unit import TemplateUnit
+from mission_manager.template_unit import TemplateUnit
 from geometry_msgs.msg import PoseStamped
 from navigation_unit.robot_navigator import BasicNavigator, TaskResult
 

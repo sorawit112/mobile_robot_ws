@@ -15,6 +15,7 @@ class Controller(object):
         self.current_pose = Pose2D()
         self.goal_pose = Pose2D()
         self.active = False
+        self.control_state = 0
 
         self.cmd_pub = self.node.create_publisher(Twist, self.node.topic.cmd_vel, qos_profile=1)
     
@@ -33,9 +34,19 @@ class Controller(object):
     def control_loop(self):
         dp = np.array([self.goal_pose.x, self.goal_pose.y])-np.array([self.current_pose.x, self.current_pose.y])
         dist = np.linalg.norm(dp)
-        
+        dangle = self.goal_pose.theta - self.current_pose.theta
+
         if dist > 0.2:
-            v,w = self.control_policy(dp)
+            if self.control_state == 0:
+                if dangle < 0.1:
+                    self.control_state = 1
+                    self.walk(0.0, 0.0)
+                else:
+                    v,w = self.spin(dangle)
+            
+            if self.control_state == 1:
+                v,w = self.control_policy(dp)
+            
             self.walk(v,w)
         else:
             self.walk(0.0, 0.0)
@@ -48,6 +59,10 @@ class Controller(object):
             w = self.k_w*math.atan2(math.sin(e),math.cos(e)) 
             return v,w
     
+    def spin(self, err):
+            w = self.k_w/2*err
+            return 0.0, w
+    
     def walk(self, v, w):
         if not self.node.working:
             self.do_logging('turtle walk while node is not active -> pass')
@@ -56,6 +71,10 @@ class Controller(object):
         msg = Twist()
         msg.linear.x = v
         msg.angular.z = w
+        self.cmd_pub.publish(msg)
+    
+    def stop(self):
+        msg = Twist()
         self.cmd_pub.publish(msg)
 
     def do_logging(self, msg):

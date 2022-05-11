@@ -1,19 +1,21 @@
-import rclpy
-from rclpy.time import Duration
-from rclpy.time import Time
-from builtin_interfaces.msg import Time as time
+from enum import Enum
 
-rclpy.init()
-t = rclpy.create_node('test').get_clock().now()
-t = time()
-t.sec = 1
-t.nanosec = 1
+class Unit(Enum):
+    """ units instance list"""
+    IDLE = 0
+    NAV = 1
+    DOCK = 2
+    TURTLE = 3
 
-T = Time(seconds=t.sec, nanoseconds=t.nanosec)
-duration = Duration(seconds=1)
+    _dict = {'IDLE':IDLE, 'NAV':NAV, 'DOCK':DOCK, 'TURTLE':TURTLE}
 
-print(type(t), t)
-print(type(T), T)
-print(type(duration), duration)
+dic = Unit._dict.value
+print(dic.values())
 
-print((T+duration).seconds_nanoseconds())
+x = Unit.NAV
+y = 1
+
+print (x == Unit.NAV)
+print (x is Unit.NAV)
+print (y is Unit.NAV)
+print (x is not Unit.DOCK)
