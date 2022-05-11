@@ -25,14 +25,19 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 
 TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
+ROBOT_NAME = os.environ['ROBOT_NAME']
 
 
 def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time', default='true')
+    x_pose = LaunchConfiguration('x_pose', default='1.0')
+    y_pose = LaunchConfiguration('y_pose', default='0.5')
+    namespace = LaunchConfiguration('namespace', default='robot1')
 
-    world_file_name = 'turtlebot3_houses/' + TURTLEBOT3_MODEL + '.model'
     world = os.path.join(get_package_share_directory('robot_gazebo'),
-                         'worlds', world_file_name)
+                         'worlds',
+                         'turtlebot3_house.world')
+    print(f'world_file : {world}')
     launch_file_dir = os.path.join(get_package_share_directory('robot_gazebo'), 'launch')
     pkg_gazebo_ros = get_package_share_directory('gazebo_ros')
 
@@ -54,4 +59,15 @@ def generate_launch_description():
             PythonLaunchDescriptionSource([launch_file_dir, '/robot_state_publisher.launch.py']),
             launch_arguments={'use_sim_time': use_sim_time}.items(),
         ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(launch_file_dir, 'spawn_turtlebot3.launch.py')
+            ),
+            launch_arguments={
+                'x_pose': x_pose,
+                'y_pose': y_pose,
+                'namespace' : namespace
+            }.items()
+        )
     ])

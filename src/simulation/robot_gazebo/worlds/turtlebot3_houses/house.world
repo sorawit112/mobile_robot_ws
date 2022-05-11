@@ -49,11 +49,5 @@
         <uri>model://turtlebot3_house</uri>
       </include>
     </model>
-     
-    <include>
-      <pose>1 0.5 0.01 0.0 0.0 0.0</pose>
-      <uri>model://turtlebot3_burger</uri>
-    </include>
-
-  </world>
+    </world>
 </sdf>
