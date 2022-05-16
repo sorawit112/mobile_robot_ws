@@ -304,7 +304,7 @@ class MissionManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    start_pose = [7.5, 9.0, math.pi/2]
+    start_pose = [10.5, 9.0, math.pi/2]
 
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "map"

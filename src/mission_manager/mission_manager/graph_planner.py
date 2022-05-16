@@ -50,15 +50,22 @@ class GraphPlanner(object):
         node_current = self.nearest_node_from_pose(current_pose.pose)
         if node_current != node_list[0]:
             node_list[0] = node_current
-
+        
         via_points = []
+        first = True
         for i in range(len(node_list)-1):
             node_start = node_list[i]
-            node_goal = node_list[i]
+            node_goal = node_list[i+1]
             self.info("**Plan** from (node {}) --> (node {})".format(node_start,
                                                                      node_goal))
             try:
-                via_points = via_points + nx.astar_path(self.graph, node_current, node_start) 
+                via = nx.astar_path(self.graph, node_start, node_goal) 
+                # print(via)
+                if first:
+                    via_points = via_points + via
+                    first = False
+                else:
+                    via_points = via_points + via[1:]
             except nx.NetworkXError as err:
                 self.error(err)
                 self.error("plan !!FAILED")
@@ -126,19 +133,19 @@ class GraphPlanner(object):
     #############           Logging
     ########################################################################################
     def info(self, msg):
-        self.get_logger().info(msg)
+        self.node.get_logger().info(msg)
         return
 
     def warn(self, msg):
-        self.get_logger().warn(msg)
+        self.node.get_logger().warn(msg)
         return
 
     def error(self, msg):
-        self.get_logger().error(msg)
+        self.node.get_logger().error(msg)
         return
 
     def debug(self, msg):
-        self.get_logger().debug(msg)
+        self.node.get_logger().debug(msg)
         return
 
 if __name__ == "__main__":

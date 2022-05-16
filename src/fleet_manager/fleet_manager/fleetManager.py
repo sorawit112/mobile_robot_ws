@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 
 from mission_manager.topics import Topics
-from custom_msgs.srv import GetMapMetadata
+from custom_msgs.srv import GetMapMetadata, UserMission
 from custom_msgs.msg import MapMetadata
 
 from queue import Queue
@@ -11,7 +11,6 @@ from networkx import DiGraph, from_numpy_matrix, relabel_nodes, set_node_attribu
 from vrpy import VehicleRoutingProblem
 
 import matplotlib.pyplot as plt
-
 import numpy as np
 
 class TraverseGraph(object):
@@ -203,17 +202,24 @@ class FleetManager(Node):
                                      num_stops=self.num_stops)
         try:
             prob.solve(cspy=False, exact=True, pricing_strategy="BestPaths")
+            routes = {}
             for i, path in prob.best_routes.items():
                 print(f"path ({i}) :",end = " ")
+                via = []
                 for n in path:
                     if n in ["Source", "Sink"]:
                         print(f"depot({self.metadata.depot_node}) ||", end = " ")
+                        via.append(self.metadata.depot_node)
                     else:
                         name = reverse_station_dict[n]
                         node = self.traverse_graph.stations[name]
                         print(f"{name}({node}) ||", end = " ")
+                        via.append(node)
+                routes[i] = via
                 print("")
             self.info("plan !!success")
+
+            self.send_user_mission(routes)
             return True
 
         except Exception as e:
@@ -226,7 +232,7 @@ class FleetManager(Node):
         get_map_client = self.create_client(GetMapMetadata, self.topic.get_map_metada)
         srv_ready = get_map_client.wait_for_service(timeout_sec=time_out)
         if not srv_ready:
-            self.info('get map metdata service not ready')
+            self.error('get map metdata service not ready')
             return False
 
         self.info('receive response from server')
@@ -239,6 +245,31 @@ class FleetManager(Node):
         self.traverse_graph.create_adjacency_dict() #hash fully connected all station
 
         return True
+
+    def send_user_mission(self, routes):
+        success_list = []
+        for i, path in routes.items():
+            user_mission_topic = f"/robot{i}/do_task"
+
+            user_mission_client = self.create_client(UserMission, user_mission_topic)
+            srv_ready = user_mission_client.wait_for_service(timeout_sec=3)
+            if not srv_ready:
+                self.error(f'{user_mission_topic} service not ready')
+                success_list.append(False)
+                continue
+
+            self.info('receive response from server')
+
+            req = UserMission.Request()
+            print(path)
+            req.user_mission.node_list = path
+
+            future = user_mission_client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+
+            success_list.append(future.result().success)
+
+        print(success_list)
 
     ########################################################################################
     #############           Logging
