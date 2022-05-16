@@ -155,15 +155,14 @@ class MissionManager(Node):
         if not self.working:
             self.info('Receive User Mission -> DO TASKS')
             
-            station_start = request.user_mission.station_start
-            station_goal = request.user_mission.station_goal
+            node_list = request.user_mission.node_list
 
             if not self.map_metadata: #map_metada not None
                 while not self.request_map_metadata(time_out=1):
                     self.info("waitting map_metadata")
                 self.graph_planner.set_map_metadata()
 
-            result = self.graph_planner.plan(self.current_pose, station_start, station_goal) 
+            result = self.graph_planner.plan(self.current_pose, node_list) 
         
             if result:
                 self.working = True

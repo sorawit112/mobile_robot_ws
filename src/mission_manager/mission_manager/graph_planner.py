@@ -44,40 +44,26 @@ class GraphPlanner(object):
         for station in station_list:
             self.stations[station.name] = station.node_id
 
-        self.do_logging("set_map_metada finished !!")
+        self.info("set_map_metada finished !!")
 
-    def plan(self, current_pose, station_start, station_goal):
+    def plan(self, current_pose, node_list):
         node_current = self.nearest_node_from_pose(current_pose.pose)
-        node_start = self.stations[str(station_start).upper()]
-        node_goal = self.stations[str(station_goal).upper()]
+        if node_current != node_list[0]:
+            node_list[0] = node_current
 
-        self.do_logging("**Plan** from station {}(node {}) --> station {}(node {})".format(station_start,
-                                                                                             node_start,
-                                                                                             station_goal,
-                                                                                             node_goal))
-        # path from current --> start
-        pathFound = True
-        try:
-            via_points = nx.astar_path(self.graph, node_current, node_start) 
-        except nx.NetworkXError as exec:
-            pathFound = False
-            self.do_logging(exec)
-
-        if not pathFound:
-            self.do_logging("plan !!FAILED")
-            return False
-
-        # path from start --> goal    
-        try:
-            via_points = via_points + nx.astar_path(self.graph, node_start, node_goal)[1:] 
-        except nx.NetworkXError as exec:
-            pathFound = False
-            self.do_logging(exec)
-
-        if not pathFound:
-            self.do_logging("plan !!FAILED")
-            return False
-        
+        via_points = []
+        for i in range(len(node_list)-1):
+            node_start = node_list[i]
+            node_goal = node_list[i]
+            self.info("**Plan** from (node {}) --> (node {})".format(node_start,
+                                                                     node_goal))
+            try:
+                via_points = via_points + nx.astar_path(self.graph, node_current, node_start) 
+            except nx.NetworkXError as err:
+                self.error(err)
+                self.error("plan !!FAILED")
+                return False
+            
         print(via_points)
         for i in range(len(via_points)-1):
             src_node = via_points[i]
@@ -91,8 +77,7 @@ class GraphPlanner(object):
             task = Task(src_node, dst_node, src_pose, dst_pose, unit)
             self.tasks.put(task)      
         
-        self.do_logging("plan !!SUCCEED")
-
+        self.info("plan !!SUCCEED")
         return True
 
     def nearest_node_from_pose(self, pose):
@@ -105,7 +90,7 @@ class GraphPlanner(object):
                 min_node_dist = n
                 min_dist = dist
 
-        self.do_logging("Nearest Node[{1}] from pose : {0}".format((pose.position.x, pose.position.y), min_node_dist))
+        self.info("Nearest Node[{1}] from pose : {0}".format((pose.position.x, pose.position.y), min_node_dist))
         return min_node_dist
 
     def edge_from_nodes(self, s, g):
@@ -114,31 +99,47 @@ class GraphPlanner(object):
 
     def get(self):
         """Pop first task from queue"""
-        self.do_logging('Pop first task from queue')
+        self.info('Pop first task from queue')
         return self.tasks.get_nowait()
 
     def peek(self):
         """Peek first task from queue"""
         
         if not self.tasks.empty():
-            self.do_logging('Peek first task from queue')
+            self.info('Peek first task from queue')
             return self.tasks[0], True
         else:
-            self.do_logging('Queue is empty cant peek!!')
+            self.warn('Queue is empty cant peek!!')
             return None, False
 
     def show_task(self, task, unit_name):
-        self.do_logging(f'src_node : {task.src_node}')
-        self.do_logging(f'dst_node : {task.dst_node}')
-        self.do_logging(f'unit : {unit_name}')
+        self.info(f'src_node : {task.src_node}')
+        self.info(f'dst_node : {task.dst_node}')
+        self.info(f'unit : {unit_name}')
 
     def clear(self):
         """Clear Tasks Queue"""
-        self.do_logging('Clear Current Task Queue')
+        self.info('Clear Current Task Queue')
         self.tasks = Queue(0)
 
-    def do_logging(self, msg):
-        self.node.get_logger().info("[{0}] {1}".format(self.module_name, msg))
+    ########################################################################################
+    #############           Logging
+    ########################################################################################
+    def info(self, msg):
+        self.get_logger().info(msg)
+        return
+
+    def warn(self, msg):
+        self.get_logger().warn(msg)
+        return
+
+    def error(self, msg):
+        self.get_logger().error(msg)
+        return
+
+    def debug(self, msg):
+        self.get_logger().debug(msg)
+        return
 
 if __name__ == "__main__":
     plan = GraphPlanner('temp_node', "map_01")
