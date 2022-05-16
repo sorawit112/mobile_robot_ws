@@ -19,6 +19,7 @@ class TraverseGraph(object):
         self.a_graph = nx.Graph(name="traverse") 
         self.ros_node = ros_node
 
+        self.adjacency_dict = None
         self.depot_node = None
         self.nodes = {} 
         self.edges = {} 
@@ -48,25 +49,10 @@ class TraverseGraph(object):
 
         self.ros_node.info("set_map_metada finished !!")
 
-    def create_distance_matrix(self):
-        # nodes = list(self.nodes.keys())
+    def create_adjacency_dict(self):
         nodes = list(self.stations.values())
         adjacency_dict = {}
-        n_mat = len(nodes)+1
-        # adj_matrix = np.zeros((len(nodes),len(nodes)), dtype=np.int32)
-        # n_sink_vec = np.zeros((len(nodes),1), dtype=np.int32)
-        adj_matrix = np.zeros((n_mat, n_mat), dtype=np.int32)
-        n_sink_vec = np.zeros((n_mat,1), dtype=np.int32)
-
-        #adjacency dict
-        # for i,n in enumerate(nodes):
-        #     n1 = n
-        #     adjacency_dict[n1] = {}
-        #     for j in range(i+1, len(nodes)):
-        #         n2 = nodes[j]
-        #         length = nx.astar_path_length(self.a_graph, n1, n2)
-        #         adjacency_dict[n1][n2] = int(round(length, 1)*10)
-
+        
         for i,n in enumerate(nodes):
             n1 = n
             adjacency_dict[i] = {}
@@ -78,23 +64,53 @@ class TraverseGraph(object):
             length = nx.astar_path_length(self.a_graph, n1, self.depot_node)
             adjacency_dict[i][j+1] = int(round(length, 2)*100)
 
-        adjacency_dict[i+1] = {}
+        adjacency_dict[len(nodes)] = {}
 
-        print(adjacency_dict)
+        self.adjacency_dict = adjacency_dict
 
+    def create_adjacency_matrix(self, station_list):
+        n_mat = len(station_list)+1
         #construct adjacency matrix
-        
+        adj_matrix = np.zeros((n_mat, n_mat), dtype=np.int32)
+        n_sink_vec = np.zeros((n_mat,1), dtype=np.int32)
+
+        #selected stations from fully adjacency dict
+        adjacency_dict = {}
+        remap_station_dict = {} #remap node by sorted station
+        filtered_station_dict = {}
+
+        for i, name in enumerate(station_list):
+            node = self.stations[name]
+            remap_station_dict[name] = i
+            adjacency_dict[i] = self.adjacency_dict[node]
+            filtered_station_dict[node] = i
+
+        adjacency_dict[n_mat-1] = {} #add depot_node inner dict
+        filtered_station_dict[len(self.stations)] = n_mat-1
+
+        print("fully connected adjacency_dict")
+        print(self.adjacency_dict)
+        print("=========================================================================")
+        print("slected adjacency_dict")
+        print(adjacency_dict)
+        print("=========================================================================")
+
         for n1, inner_dict in adjacency_dict.items():
+            # print(n1, inner_dict.keys())
             for n2 in inner_dict.keys():
-                if n2 == list(adjacency_dict.keys())[-1]:
-                    adj_matrix[n1][n2] = 0 #node_to_source = 0
-                    adj_matrix[n2][n1] = inner_dict[n2] #source_to_node
+                if n2 not in filtered_station_dict.keys():
+                    continue
+                fil_n = filtered_station_dict[n2]
+                # print(n1,n2,fil_n)
+                if n2 == list(self.adjacency_dict.keys())[-1]:
+                    adj_matrix[n1][fil_n] = 0 #node_to_source = 0
+                    adj_matrix[fil_n][n1] = inner_dict[n2] #source_to_node
 
                     #backup node_to_sink then stack after
                     n_sink_vec[n1] = inner_dict[n2]
                 else:
-                    adj_matrix[n1][n2] = inner_dict[n2]
-                    adj_matrix[n2][n1] = inner_dict[n2]
+                    adj_matrix[n1][fil_n] = inner_dict[n2]
+                    adj_matrix[fil_n][n1] = inner_dict[n2]
 
         # stack node to sink  
         adj_matrix = np.hstack((adj_matrix, n_sink_vec)) 
@@ -111,30 +127,8 @@ class TraverseGraph(object):
                     print(" ", end="")
                 print(v, end=" ")
             print('|')
-            
-        # new_adj_matrix, bot_mat = np.vsplit(adj_matrix, [45])
-        # new_adj_matrix, right_mat = np.hsplit(new_adj_matrix, [45])
 
-        # right_mat = np.transpose(right_mat)
-        # right_mat_0 = right_mat[0].reshape(new_adj_matrix.shape[0], 1)
-        # right_mat_1 = right_mat[1].reshape(new_adj_matrix.shape[0], 1)
-
-        # new_adj_matrix = np.hstack((right_mat_0, new_adj_matrix, right_mat_1))
-        # bot_mat_0 = np.hstack((np.array([0]),bot_mat[0][0:45],np.array([0])))
-        # new_adj_matrix = np.vstack((bot_mat_0, new_adj_matrix, bot_mat[1]))
-        
-        # #visualize matrix
-        # for _, inner in enumerate(new_adj_matrix):
-        #     print('|', end = " ")
-        #     for val in inner:
-        #         v = str(val)
-        #         for i in range(3-len(v), 0, -1):
-        #             print(" ", end="")
-        #         print(v, end=" ")
-        #     print('|')
-
-        return adj_matrix #new_adj_matrix
-
+        return adj_matrix, remap_station_dict
 
 class FleetManager(Node):
     def __init__(self):
@@ -149,6 +143,8 @@ class FleetManager(Node):
         self.metadata = MapMetadata()
 
         self.n_robots = 2
+        self.load_capacity = 4
+        self.num_stops = 2
 
     def pickup_delivery_plan(self, pickups_list, deliveries_list, demands_list):
         if len(pickups_list) != len(deliveries_list) and len(pickups_list) != len(demands_list):
@@ -163,13 +159,29 @@ class FleetManager(Node):
                 return False
             station_list.append(n)
 
-        
-            
-        
+        station_list.sort()
+
+        #construct vrpy here
+        adj_matrix, remap_station_dict  = self.traverse_graph.create_adjacency_matrix(station_list) 
+
+        self.adj_matrix = np.array(adj_matrix, dtype=[("cost", int)])
+        self.vrp_graph = from_numpy_matrix(self.adj_matrix, create_using=nx.DiGraph())
+
+        # The depot is relabeled as Source and Sink
+        self.vrp_graph = relabel_nodes(self.vrp_graph, 
+                                      {adj_matrix.shape[0]-2: "Source", #0: "Source", 
+                                       adj_matrix.shape[0]-1: "Sink"})
+ 
+        print("")
+        print(f"nodes : {nx.nodes(self.vrp_graph)}")
+
+        reverse_station_dict = {}
+        for name, node in remap_station_dict.items():
+            reverse_station_dict[node] = name
 
         for i, from_node in enumerate(pickups_list):
-            from_node = self.traverse_graph.stations[from_node] #+ 1
-            to_node = self.traverse_graph.stations[deliveries_list[i]] #+ 1
+            from_node = remap_station_dict[from_node] #+ 1
+            to_node = remap_station_dict[deliveries_list[i]] #+ 1
             demand = demands_list[i]
             self.vrp_graph.nodes[from_node]["request"] = to_node
             # Pickups are accounted for positively
@@ -179,27 +191,34 @@ class FleetManager(Node):
 
         print(f"demand : {nx.get_node_attributes(self.vrp_graph, 'demand')}")
         print(f"request : {nx.get_node_attributes(self.vrp_graph, 'request')}")
+        print("")
 
         # nx.draw_shell(self.vrp_graph, with_labels=True)
         # plt.show()
 
+        print("planning")
         prob = VehicleRoutingProblem(self.vrp_graph, 
-                                     load_capacity=4, 
-                                    #  num_vehicles=self.n_robots, 
+                                     load_capacity=self.load_capacity,
                                      pickup_delivery=True,
-                                     num_stops=4)
+                                     num_stops=self.num_stops)
         try:
             prob.solve(cspy=False, exact=True, pricing_strategy="BestPaths")
-            print(prob.best_routes)
-            print(prob.node_load)
+            for i, path in prob.best_routes.items():
+                print(f"path ({i}) :",end = " ")
+                for n in path:
+                    if n in ["Source", "Sink"]:
+                        print(f"depot({self.metadata.depot_node}) ||", end = " ")
+                    else:
+                        name = reverse_station_dict[n]
+                        node = self.traverse_graph.stations[name]
+                        print(f"{name}({node}) ||", end = " ")
+                print("")
             self.info("plan !!success")
-
             return True
+
         except Exception as e:
             print(e)
-            print(prob.G.nodes())
             self.info("plan !!Failed")
-
             return False
         
     def request_map_metadata(self, time_out=5):
@@ -216,29 +235,8 @@ class FleetManager(Node):
 
         self.metadata = future.result().metadata
 
-        return True
-
-    def construct_vrp_graph(self, station_list):
         self.traverse_graph.set_map_metadata(self.metadata)
-
-        adj_matrix = self.traverse_graph.create_distance_matrix() #get fully connected all station
-
-        self.adj_matrix = np.array(adj_matrix, dtype=[("cost", int)])
-        self.vrp_graph = from_numpy_matrix(self.adj_matrix, create_using=nx.DiGraph())
-        
-        # for u,v,w in self.vrp_graph.edges(data="cost"):
-        #     print(f"from:{u} to:{v} weight={w}")
-
-        # The depot is relabeled as Source and Sink
-        self.vrp_graph = relabel_nodes(self.vrp_graph, 
-                                      {adj_matrix.shape[0]-2: "Source", #0: "Source", 
-                                       adj_matrix.shape[0]-1: "Sink"})
-
-        # for n in range(len(nx.nodes(self.vrp_graph))-2):
-        #     self.vrp_graph.nodes[n]["demand"] = 1
- 
-        print("")
-        print(f"nodes : {nx.nodes(self.vrp_graph)}")
+        self.traverse_graph.create_adjacency_dict() #hash fully connected all station
 
         return True
 
@@ -263,9 +261,9 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A', 'C', 'E', 'G', 'I', 'K', 'M'] #, 'F', 'G', 'H', 'D']
-    deliveries_list = ['B', 'D', 'F', 'H', 'J', 'L', 'N'] #, 'K', 'J', 'B', 'N']
-    demand_list =     [ 1 ,  1 ,  1 ,  1 ,  1 ,  1 ,  1 ] #,  1 ,  1 ,  1 ,  1 ]
+    pickups_list =    ['A',  'E', 'I', 'M']
+    deliveries_list = ['B',  'F', 'J', 'N']
+    demand_list =     [ 1 ,    1 ,  1 ,  1 ]
 
     fleet_manager = FleetManager()
 
