@@ -1,1 +1,1 @@
-string[] station_list
+int32[] node_list
