@@ -1,2 +1,1 @@
-string station_start
-string station_goal
+string[] station_list
