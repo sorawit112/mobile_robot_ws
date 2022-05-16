@@ -17,7 +17,7 @@ class GraphLoader(Node):
         super().__init__('graph_loader')
 
         self.map_name = map_name
-        self._nodes, self._edges, self._edges_unit, self._stations = self.load_metadata(map_name)
+        self._nodes, self._edges, self._edges_unit, self._stations, self._depot_node = self.load_metadata(map_name)
 
         self.visualize_pub = self.create_publisher(MarkerArray, 'visualize_graph', qos_profile=1)
         self.create_service(GetMapMetadata, 'get_map_metadata', self.handle_get_metadata)
@@ -59,6 +59,7 @@ class GraphLoader(Node):
         map_metadata.nodes = node_list
         map_metadata.edges = edge_list
         map_metadata.stations = station_list
+        map_metadata.depot_node = self._depot_node
 
         response.metadata = map_metadata
 
@@ -87,8 +88,10 @@ class GraphLoader(Node):
             dict_edges_task[int(e)] = Unit._dict.value[str(d[1])]
         for s,n in data['stations'].items():
             dict_stations[str(s)] = int(n)
+        
+        depot_node = data['depot']
 
-        return dict_nodes, dict_edges, dict_edges_task, dict_stations
+        return dict_nodes, dict_edges, dict_edges_task, dict_stations, depot_node
 
     def draw_graph_cb(self):
         marker_list = MarkerArray()
