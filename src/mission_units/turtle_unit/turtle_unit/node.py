@@ -113,7 +113,6 @@ class TurtleUnit(TemplateUnit):
         self.do_logging('Goal succeed')
         result = self.preexit_result()
         goal_handle.succeed()
-        self.do_logging('Returning result: {0}'.format(result.last_pose))
 
         return result
 
