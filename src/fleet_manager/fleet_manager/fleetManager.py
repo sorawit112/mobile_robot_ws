@@ -249,7 +249,7 @@ class FleetManager(Node):
     def send_user_mission(self, routes):
         success_list = []
         for i, path in routes.items():
-            user_mission_topic = f"/robot{i}/do_task"
+            user_mission_topic = f"/robot{i}/do_usermission"
 
             user_mission_client = self.create_client(UserMission, user_mission_topic)
             srv_ready = user_mission_client.wait_for_service(timeout_sec=3)
