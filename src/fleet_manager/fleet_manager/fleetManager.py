@@ -118,11 +118,20 @@ class TraverseGraph(object):
         adj_matrix = np.vstack((adj_matrix, np.zeros((1,n_mat+1), dtype=np.int32)))        
         
         #visualize matrix
+        print('|', end = " ")
+        for i in range(n_mat+1):
+            if i == n_mat:
+                print("sink", end=" ")
+            elif i == n_mat-1:
+                print("source", end=" ")
+            else:
+                print(f"node{i}", end=" ")
+        print('|')
         for _, inner in enumerate(adj_matrix):
             print('|', end = " ")
             for val in inner:
                 v = str(val)
-                for i in range(4-len(v), 0, -1):
+                for i in range(5-len(v), 0, -1):
                     print(" ", end="")
                 print(v, end=" ")
             print('|')
@@ -266,6 +275,7 @@ class FleetManager(Node):
 
             future = user_mission_client.call_async(req)
             rclpy.spin_until_future_complete(self, future)
+            self.info(f"receive response from adapter : {future.result().success}")
 
             success_list.append(future.result().success)
 
@@ -292,9 +302,9 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A',  'E', 'I', 'M']
-    deliveries_list = ['B',  'F', 'J', 'N']
-    demand_list =     [ 1 ,    1 ,  1 ,  1 ]
+    pickups_list =    ['A', 'B',  'F',  'H']
+    deliveries_list = ['D', 'C',  'G',  'I']
+    demand_list =     [ 1 ,  1,    1 ,   1 ]
 
     fleet_manager = FleetManager()
 

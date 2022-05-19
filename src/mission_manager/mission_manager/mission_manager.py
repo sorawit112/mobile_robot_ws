@@ -9,8 +9,10 @@ from mission_manager.mission_executor import Unit, MissionExecutor
 from mission_manager.transform_manager import TransformManager
 from mission_manager.graph_planner import GraphPlanner, Task
 from action_msgs.msg import GoalStatus
+from custom_msgs.msg import UserMission as dotask
 from custom_msgs.srv import GetMapMetadata, UserMission
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from std_msgs.msg import Int16
 
 NODE_NAME = 'mission_manager'
 
@@ -26,6 +28,9 @@ class MissionManager(Node):
         self.follow_way_point = False
 
         self.current_pose = start_pose
+        self.status = Int16()
+        self.status.data = 0
+        self.pub_status_once = True
 
         self.topic = Topics()
         self.transform_manager = TransformManager(self)
@@ -33,16 +38,22 @@ class MissionManager(Node):
 
         self.mission_executor = mission_executor
 
-        self.user_mission_srv = self.create_service(UserMission, self.topic.do_task, self.user_mission_cb)
+        self.robot_status_pub = self.create_publisher(Int16, self.topic.robot_status, qos_profile=1)
+        # self.user_mission_srv = self.create_service(UserMission, self.topic.do_task, self.user_mission_cb)
 
         self.get_map_client = self.create_client(GetMapMetadata, self.topic.get_map_metada)
         self.request_map_metadata()
 
+        self.create_subscription(dotask, self.topic.do_task, self.user_mission_cb, qos_profile=1)
         self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.initial_pose_cb, qos_profile=1)
         self.task_timer = self.create_timer(self.do_task_interval, self.do_task_interval_cb)
         self.info('Initialize Completed - ready to receive TASK !!')
 
     def do_task_interval_cb(self):
+        if self.pub_status_once:
+            self.robot_status_pub.publish(self.status)
+            self.pub_status_once = False
+
         if not self.working:
             self.info("No user mission request .....")
             return
@@ -50,6 +61,8 @@ class MissionManager(Node):
         if self.graph_planner.tasks.empty():
             self.info("Empty Tasks Queue -> All mission Finish")
             self.working = False
+            self.status.data = 0
+            self.pub_status_once = True
             return
 
         if not self.executing:
@@ -116,6 +129,8 @@ class MissionManager(Node):
             self.executing = False
             self.graph_planner.clear()
             self.mission_executor.reset_module()
+            self.status.data = 2
+            self.pub_status_once = True
             return
 
         feedback = self.mission_executor.getFeedback()
@@ -127,21 +142,21 @@ class MissionManager(Node):
                 else:
                     self.current_pose = feedback.current_pose
                     pose = self.current_pose.pose
-                    self.info('[feedback] current_pose: x:{}, y:{}'.format(
+                    self.info('[feedback] current_pose: x:{:.2f}, y:{:.2f}'.format(
                                                     pose.position.x,
                                                     pose.position.y
                                                     ))
             elif self.current_unit is Unit.DOCK:
                 self.current_pose = feedback.current_pose
                 pose = self.current_pose.pose
-                self.info('[feedback] current_pose: x:{}, y:{}'.format(
+                self.info('[feedback] current_pose: x:{:.2f}, y:{:.2f}'.format(
                                                     pose.position.x,
                                                     pose.position.y
                                                     ))
             elif self.current_unit is Unit.TURTLE:
                 self.current_pose = feedback.current_pose
                 pose = self.current_pose.pose
-                self.info('[feedback] current_pose: x:{}, y:{}'.format(
+                self.info('[feedback] current_pose: x:{:.2f}, y:{:.2f}'.format(
                                                     pose.position.x,
                                                     pose.position.y
                                                     ))
@@ -151,11 +166,11 @@ class MissionManager(Node):
     ########################################################################################
     #############           Call-Back function
     ########################################################################################
-    def user_mission_cb(self, request, response):
+    def user_mission_cb(self, msg): #request, response):
         if not self.working:
             self.info('Receive User Mission -> DO TASKS')
             
-            node_list = request.user_mission.node_list
+            node_list = msg.node_list #request.user_mission.node_list
 
             if not self.map_metadata: #map_metada not None
                 while not self.request_map_metadata(time_out=1):
@@ -166,20 +181,25 @@ class MissionManager(Node):
         
             if result:
                 self.working = True
+                self.status.data = 1
+                self.pub_status_once = True
             else:
                 self.working = False
+                self.status.data = 2
+                self.pub_status_once = True
                 self.error("Plan Failed!!!")
-                    
-            response.success = result
-            return response
+            
+            self.info(f"send response to client : {result}")
+            # response.success = result
+            # return response
         else:
             self.warn('Receive request while current user mission is executing -> return Fail')
-            response.success = False
-            return response
+            # response.success = False
+            # return response
 
     def initial_pose_cb(self, msg):
         self.info('receive initial_pose ... setting current pose')
-        self.info('current_pose -> x :{}, y: {}'.format(
+        self.info('current_pose -> x :{:.2f}, y: {:.2f}'.format(
                                         msg.pose.pose.position.x, 
                                         msg.pose.pose.position.y))
         self.current_pose.pose = msg.pose.pose
