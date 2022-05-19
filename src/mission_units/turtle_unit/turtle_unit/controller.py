@@ -6,7 +6,7 @@ import math
 
 class Controller(object):
     k_v = 0.2
-    k_w = 0.5
+    k_w = 0.6
 
     def __init__(self, node):
         self.module_name = "controller"
@@ -60,7 +60,7 @@ class Controller(object):
             return v,w
     
     def spin(self, err):
-            w = self.k_w/2*err
+            w = self.k_w*err
             return 0.0, w
     
     def walk(self, v, w):

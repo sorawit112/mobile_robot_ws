@@ -58,7 +58,7 @@ class TurtleUnit(TemplateUnit):
             # Publish the feedback
             feedback_msg.current_pose = self.current_pose
             goal_handle.publish_feedback(feedback_msg)
-            self.do_logging('Publishing feedback: x: {0}, y: {1}'.format(self.current_pose.pose.position.x,
+            self.do_logging('Publishing feedback: x: {:.2f}, y: {:.2f}'.format(self.current_pose.pose.position.x,
                                                                          self.current_pose.pose.position.y))      
 
             # publish map -> odom for next loop
