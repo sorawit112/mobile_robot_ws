@@ -46,10 +46,9 @@ class GraphPlanner(object):
 
         self.info("set_map_metada finished !!")
 
-    def plan(self, current_pose, node_list):
-        node_current = self.nearest_node_from_pose(current_pose.pose)
-        if node_current != node_list[0]:
-            node_list[0] = node_current
+    def plan(self, current_node, node_list):
+        if current_node != node_list[0]:
+            node_list[0] = current_node
         
         via_points = []
         first = True

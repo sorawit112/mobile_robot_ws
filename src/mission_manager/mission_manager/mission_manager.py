@@ -1,3 +1,4 @@
+import os
 import rclpy
 import time, math
 
@@ -28,6 +29,9 @@ class MissionManager(Node):
         self.follow_way_point = False
 
         self.current_pose = start_pose
+        self.depot_pose = start_pose
+        self.current_node = None
+
         self.status = Int16()
         self.status.data = 0
         self.pub_status_once = True
@@ -68,6 +72,10 @@ class MissionManager(Node):
 
             self.graph_planner.show_task(task, unit_name)
 
+            if task.dst_node == self.map_metadata.depot_node:
+                self.info('dst_node is depot_node --> use local depot_pose instead!!!')
+                task.dst_pose = (self.depot_pose[0], self.depot_pose[1])
+
             goal = self.create_goal_pose_from_task(task)
             if unit is Unit.NAV:
                 self.mission_executor.resume_navigator()
@@ -97,6 +105,7 @@ class MissionManager(Node):
             if status:
                 self.info(f"executing task with unit: {unit_name}")
                 self.executing = True
+                self.current_node = task.src_node
                 self.current_unit = unit
             else:
                 self.current_unit = None
@@ -109,6 +118,7 @@ class MissionManager(Node):
             status = self.mission_executor.status
             if status == GoalStatus.STATUS_SUCCEEDED:
                 self.info("Task Succeeded")
+                self.current_node = task.dst_node
                 self.executing = False
                 self.mission_executor.reset_module()
                 self.info("reset mission executor .... do next task ....")
@@ -167,11 +177,12 @@ class MissionManager(Node):
             self.info('Receive User Mission -> DO TASKS')
             
             node_list = msg.node_list
-            self.map_metadata = msg.map_metadata
+            if self.map_metadata is None: #first time load map_metadata
+                self.map_metadata = msg.map_metadata
+                self.current_node = self.map_metadata.depot_node #start with depot node
+                self.graph_planner.set_map_metadata(self.map_metadata)
 
-            self.graph_planner.set_map_metadata(self.map_metadata)
-
-            result = self.graph_planner.plan(self.current_pose, node_list) 
+            result = self.graph_planner.plan(self.current_node, node_list) 
         
             if result:
                 self.working = True
@@ -306,8 +317,13 @@ class MissionManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    # start_pose = [10.5, 9.0, math.pi/2]
-    start_pose = [-0.5, 0.0, 0.0]
+    robot_name = os.environ['ROBOT_NAME']
+    depot_dict = {
+        "robot1":[-0.5, 0.3, 0.0],
+        "robot2":[-0.5, 0.0, 0.0],
+        "robot3":[-0.5, -0.3, 0.0]
+    }
+    start_pose = depot_dict[robot_name]
 
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "map"

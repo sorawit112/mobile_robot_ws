@@ -3,7 +3,7 @@ import os
 class Topics(object):
     
     def __init__(self):
-        ROBOT_NAME = os.environ['ROBOT_NAME'] #robot1
+        ROBOT_NAME = os.environ['ROBOT_NAME']
         self.robot_name = "/" + ROBOT_NAME
 
         # Frame
