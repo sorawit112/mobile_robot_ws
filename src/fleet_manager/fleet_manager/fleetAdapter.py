@@ -46,9 +46,10 @@ class FleetAdapter(Node):
         self.info('initialize complete')
 
     def main_routine(self):
-        self.info("current_pose: x{:.2f}, y{:.2f}".format(self.current_pose.pose.position.x,
+        self.info("{} pose: x{:.2f}, y{:.2f}".format(ROBOT_NAME,
+                                                    self.current_pose.pose.position.x,
                                                     self.current_pose.pose.position.y))
-        self.info(f"status: {self.status}")
+        self.info(f"{ROBOT_NAME} status: {self.status}")
         
         # current_tf, success = self.tf_manager.get_tf("map", "base_footprint")
         # if success:
@@ -70,10 +71,12 @@ class FleetAdapter(Node):
     def do_usermission_cb(self, request, response):
         self.info("------------receive do_usermission request------------")
         node_list = request.user_mission.node_list
+        metadata = request.map_metadata
         print(node_list)
         dotask_msg = dotask()
         dotask_msg.node_list = node_list
-
+        dotask_msg.map_metadata = metadata
+        
         self.do_task_pub.publish(dotask_msg)
 
         response.success = True

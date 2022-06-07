@@ -39,11 +39,7 @@ class MissionManager(Node):
         self.mission_executor = mission_executor
 
         self.robot_status_pub = self.create_publisher(Int16, self.topic.robot_status, qos_profile=1)
-        # self.user_mission_srv = self.create_service(UserMission, self.topic.do_task, self.user_mission_cb)
-
-        self.get_map_client = self.create_client(GetMapMetadata, self.topic.get_map_metada)
-        self.request_map_metadata()
-
+        
         self.create_subscription(dotask, self.topic.do_task, self.user_mission_cb, qos_profile=1)
         self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.initial_pose_cb, qos_profile=1)
         self.task_timer = self.create_timer(self.do_task_interval, self.do_task_interval_cb)
@@ -166,16 +162,14 @@ class MissionManager(Node):
     ########################################################################################
     #############           Call-Back function
     ########################################################################################
-    def user_mission_cb(self, msg): #request, response):
+    def user_mission_cb(self, msg):
         if not self.working:
             self.info('Receive User Mission -> DO TASKS')
             
-            node_list = msg.node_list #request.user_mission.node_list
+            node_list = msg.node_list
+            self.map_metadata = msg.map_metadata
 
-            if not self.map_metadata: #map_metada not None
-                while not self.request_map_metadata(time_out=1):
-                    self.info("waitting map_metadata")
-                self.graph_planner.set_map_metadata()
+            self.graph_planner.set_map_metadata(self.map_metadata)
 
             result = self.graph_planner.plan(self.current_pose, node_list) 
         
@@ -235,23 +229,6 @@ class MissionManager(Node):
         else:
             self.info("No way-points")
             return False, None
-
-    def request_map_metadata(self, time_out=5):
-        self.info('wait for get map metdata service')
-        srv_ready = self.get_map_client.wait_for_service(timeout_sec=time_out)
-        if not srv_ready:
-            self.info('get map metdata service not ready')
-            return False
-
-        self.info('receive response from server')
-        future = self.get_map_client.call_async(GetMapMetadata.Request())
-        rclpy.spin_until_future_complete(self, future)
-
-        self.map_metadata = future.result().metadata
-
-        self.graph_planner.set_map_metadata(self.map_metadata)
-        return True
-
 
     ########################################################################################
     #############           Utility Function
@@ -345,15 +322,11 @@ def main(args=None):
 
     try:
         mission_executor = MissionExecutor()
-        # set initial pose for amcl
-        mission_executor.setInitialPose(initial_pose)
-        # start LifecycleManager of Localizer and Navigator
 
-        mission_executor.waitUntilNav2Active()
+        # mission_executor.setInitialPose(initial_pose)
+        # mission_executor.waitUntilNav2Active()
 
-        time.sleep(1)
-        # pause Navigator
-        # mission_executor.pause_navigator() #resume when need 
+        # time.sleep(1)
 
         mission_manager = MissionManager(mission_executor, initial_pose)
 

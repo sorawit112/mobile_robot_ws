@@ -270,6 +270,7 @@ class FleetManager(Node):
             req = UserMission.Request()
             print(path)
             req.user_mission.node_list = path
+            req.map_metadata = self.metadata
 
             future = user_mission_client.call_async(req)
             rclpy.spin_until_future_complete(self, future)
@@ -300,9 +301,9 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A']
-    deliveries_list = ['E']
-    demand_list =     [ 1 ]
+    pickups_list =    ['A', 'B']
+    deliveries_list = ['E', 'F']
+    demand_list =     [ 1 , 1]
 
     fleet_manager = FleetManager()
 

@@ -1,3 +1,4 @@
 UserMission user_mission
+MapMetadata map_metadata
 ---
 bool success

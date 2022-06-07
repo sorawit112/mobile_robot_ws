@@ -15,15 +15,16 @@ class Topics(object):
         self.base_footprint = "base_footprint"
         
         # Topics
-        # self.cmd_vel = "/" + ROBOT_NAME + "/cmd_vel"
         self.cmd_vel = "/cmd_vel"
+
         self.amcl_pose = "/amcl_pose"
-        self.status = "/" + ROBOT_NAME + "/status"
-        self.robot_status = "/robot_status" 
-        self.current_pose = "/" + ROBOT_NAME + "/current_pose"
+        
+        self.status = "/" + ROBOT_NAME + "/status" 
+        self.robot_status = "/" + ROBOT_NAME + "/robot_status" 
+        self.current_pose = "/" + ROBOT_NAME + "/current_pose" 
+        self.do_task = "/" + ROBOT_NAME + "/do_task"
         
         # Service
         self.do_usermission = "/" + ROBOT_NAME + "/do_usermission"
-        self.do_task = "/do_task"
         self.get_map_metada = 'get_map_metadata'
         
