@@ -264,6 +264,9 @@ class MissionManager(Node):
         dst_pose.pose.position.y = task.dst_pose[1]
         dst_pose.pose.position.z = 0.0
 
+        self.info('src_pose.x:{}, src_pose.y{}'.format(task.src_pose[0], task.src_pose[1]))
+        self.info('dst_pose.x:{}, dst_pose.y{}'.format(task.dst_pose[0], task.dst_pose[1]))
+
         x,y,z,w = self.calculate_heading(task.src_pose, task.dst_pose)
 
         dst_pose.pose.orientation.x = x
@@ -279,6 +282,8 @@ class MissionManager(Node):
         x_diff = dst_pose[0] - src_pose[0]
 
         theta = math.atan2(y_diff, x_diff)
+
+        print('dst_angle:{}'.format(theta*180/math.pi))
 
         x,y,z,w = TransformManager.quaternion_from_euler(0,0,theta)
 
@@ -324,7 +329,8 @@ class MissionManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    start_pose = [10.5, 9.0, math.pi/2]
+    # start_pose = [10.5, 9.0, math.pi/2]
+    start_pose = [-0.5, 0.0, 0.0]
 
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "map"

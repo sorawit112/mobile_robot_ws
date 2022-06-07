@@ -18,7 +18,7 @@ from custom_msgs.srv import UserMission
 ROBOT_NAME = os.environ['ROBOT_NAME']
 
 class FleetAdapter(Node):
-    def __init__(self, service_client):
+    def __init__(self):
         super().__init__(node_name="fleet_adapter")
         self.module_name = "fleet_adapter"
 
@@ -33,7 +33,6 @@ class FleetAdapter(Node):
 
         self.topic = Topics()
         self.tf_manager = TransformManager(self)
-        self.service_client = service_client
 
         self.status_pub = self.create_publisher(Int16, self.topic.status, qos_profile=1)
         self.pose_pub = self.create_publisher(PoseStamped, self.topic.current_pose, qos_profile=1)
@@ -44,6 +43,7 @@ class FleetAdapter(Node):
         self.create_service(UserMission, self.topic.do_usermission, self.do_usermission_cb)
         self.create_timer(self.adapter_interval, self.main_routine)
 
+        self.info('initialize complete')
 
     def main_routine(self):
         self.info("current_pose: x{:.2f}, y{:.2f}".format(self.current_pose.pose.position.x,
@@ -74,7 +74,6 @@ class FleetAdapter(Node):
         dotask_msg = dotask()
         dotask_msg.node_list = node_list
 
-        # self.service_client.call_do_task(node_list)
         self.do_task_pub.publish(dotask_msg)
 
         response.success = True

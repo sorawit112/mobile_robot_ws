@@ -27,15 +27,16 @@ class TurtleUnit(TemplateUnit):
         dst_pose = goal_handle.request.pose
         
         # intitial localization
-        self.base_tf, result = self.get_tf("map", self.topic.base_footprint)
-        if not result:
-            return self.abort_handle(goal_handle, "can't get tf map->base_footprint")
+        
+        result = False
+        while not result:
+            self.base_tf, result = self.get_tf("map", self.topic.base_footprint)
         
         src_pose = self.tf_manager.pose_stamped_from_tf_stamped(self.base_tf)
 
-        self.working = True
         self.initial_controller(src_pose, dst_pose)
-
+        self.working = True
+        
         # Start executing the action
         while not self.controller.goal_reach:
             # get current_pose
@@ -58,8 +59,8 @@ class TurtleUnit(TemplateUnit):
             # Publish the feedback
             feedback_msg.current_pose = self.current_pose
             goal_handle.publish_feedback(feedback_msg)
-            self.do_logging('Publishing feedback: x: {:.2f}, y: {:.2f}'.format(self.current_pose.pose.position.x,
-                                                                         self.current_pose.pose.position.y))      
+            # self.do_logging('Publishing feedback: x: {:.2f}, y: {:.2f}'.format(self.current_pose.pose.position.x,
+            #                                                              self.current_pose.pose.position.y))      
 
             # publish map -> odom for next loop
             self.rate.sleep()
@@ -85,6 +86,9 @@ class TurtleUnit(TemplateUnit):
         self.controller.current_pose = Pose2D( x=src_pose.pose.position.x,
                                                y=src_pose.pose.position.y,
                                                theta=current_theta) 
+
+        self.do_logging('current_pose :{}\n'.format(self.controller.current_pose))
+        self.do_logging('goal_pose :{}\n'.format(self.controller.goal_pose))
 
     def preexit_result(self):
         self.working = False

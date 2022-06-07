@@ -33,12 +33,14 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
 
+    map_folder = 'map_' + str(MAP_NAME).lower()
     map_name = 'map_' + str(MAP_NAME).lower()+'.yaml'
     map_dir = LaunchConfiguration(
         'map',
         default=os.path.join(
             get_package_share_directory('navigation'),
             'map',
+            map_folder,
             map_name))
 
     param_file_name = TURTLEBOT3_MODEL + '.yaml'
@@ -51,10 +53,7 @@ def generate_launch_description():
 
     nav2_launch_file_dir = os.path.join(get_package_share_directory('nav2_bringup'), 'launch')
 
-    rviz_config_dir = os.path.join(
-        get_package_share_directory('nav2_bringup'),
-        'rviz',
-        'nav2_default_view.rviz')
+    rviz_config_dir = '/home/trainee/ros2_ws/mobile_robot_ws/src/navigation/rviz/nav2_rviz.rviz'
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -85,11 +84,11 @@ def generate_launch_description():
                 'autostart' : autostart,
                 'params_file': param_dir}.items(),
         ),
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2',
-            arguments=['-d', rviz_config_dir],
-            parameters=[{'use_sim_time': use_sim_time}],
-            output='screen'),
+        # Node(
+        #     package='rviz2',
+        #     executable='rviz2',
+        #     name='rviz2',
+        #     arguments=['-d', rviz_config_dir],
+        #     parameters=[{'use_sim_time': use_sim_time}],
+        #     output='screen'),
     ])

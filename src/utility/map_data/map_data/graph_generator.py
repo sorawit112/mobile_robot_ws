@@ -104,9 +104,9 @@ class GraphLoader(Node):
         marker.type = Marker.POINTS
         marker.action = Marker.ADD
 
-        marker.scale.x = 0.2
-        marker.scale.y = 0.2
-        marker.scale.z = 0.
+        marker.scale.x = 0.1
+        marker.scale.y = 0.1
+        marker.scale.z = 0.0
         marker.color.a = 1.0
         marker.color.r = 0.0
         marker.color.g = 0.0
@@ -126,15 +126,15 @@ class GraphLoader(Node):
             marker_text.id = text_id
             marker_text.type = Marker.TEXT_VIEW_FACING
             marker_text.action = Marker.ADD
-            marker_text.scale.x = 0.2
-            marker_text.scale.y = 0.2
-            marker_text.scale.z = 0.3
+            marker_text.scale.x = 0.05
+            marker_text.scale.y = 0.05
+            marker_text.scale.z = 0.15
             marker_text.color.a = 1.0
             marker_text.color.r = 0.0
             marker_text.color.g = 0.0
             marker_text.color.b = 0.0
-            marker_text.pose.position.x = p[0]-0.17
-            marker_text.pose.position.y = p[1]-0.17
+            marker_text.pose.position.x = p[0]-0.05
+            marker_text.pose.position.y = p[1]-0.05
             marker_text.pose.position.z = 0.
             marker_text.pose.orientation.x = 0.
             marker_text.pose.orientation.y = 0.
@@ -160,7 +160,7 @@ class GraphLoader(Node):
         marker.type = Marker.LINE_LIST
         marker.action = Marker.ADD
 
-        marker.scale.x = 0.05
+        marker.scale.x = 0.02
         marker.scale.y = 0.
         marker.scale.z = 0.
         marker.color.a = 1.0

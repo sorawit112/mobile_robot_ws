@@ -74,34 +74,32 @@ class TraverseGraph(object):
         n_sink_vec = np.zeros((n_mat,1), dtype=np.int32)
 
         #selected stations from fully adjacency dict
-        adjacency_dict = {}
-        remap_station_dict = {} #remap node by sorted station
-        filtered_station_dict = {}
+        filter_adjacency_dict = {}
+        remap_station_dict = {} #remap name:node{i} by sorted station
+        filter_station_dict = {} #dict discribed full_node{n}:filtered_node{i} 
 
         for i, name in enumerate(station_list):
             node = self.stations[name]
             remap_station_dict[name] = i
-            adjacency_dict[i] = self.adjacency_dict[node]
-            filtered_station_dict[node] = i
+            filter_adjacency_dict[i] = self.adjacency_dict[node]
+            filter_station_dict[node] = i
 
-        adjacency_dict[n_mat-1] = {} #add depot_node inner dict
-        filtered_station_dict[len(self.stations)] = n_mat-1
+        filter_adjacency_dict[n_mat-1] = {} #add depot_node inner dict
+        filter_station_dict[len(self.stations)] = n_mat-1
 
         print("fully connected adjacency_dict")
         print(self.adjacency_dict)
         print("=========================================================================")
-        print("slected adjacency_dict")
-        print(adjacency_dict)
+        print("filter adjacency_dict")
+        print(filter_adjacency_dict)
         print("=========================================================================")
 
-        for n1, inner_dict in adjacency_dict.items():
-            # print(n1, inner_dict.keys())
+        for n1, inner_dict in filter_adjacency_dict.items():
             for n2 in inner_dict.keys():
-                if n2 not in filtered_station_dict.keys():
+                if n2 not in filter_station_dict.keys():
                     continue
-                fil_n = filtered_station_dict[n2]
-                # print(n1,n2,fil_n)
-                if n2 == list(self.adjacency_dict.keys())[-1]:
+                fil_n = filter_station_dict[n2]
+                if n2 == list(self.adjacency_dict.keys())[-1]: #n2 = depot (last node from list)
                     adj_matrix[n1][fil_n] = 0 #node_to_source = 0
                     adj_matrix[fil_n][n1] = inner_dict[n2] #source_to_node
 
@@ -151,7 +149,7 @@ class FleetManager(Node):
         self.metadata = MapMetadata()
 
         self.n_robots = 2
-        self.load_capacity = 4
+        self.load_capacity = 2
         self.num_stops = 2
 
     def pickup_delivery_plan(self, pickups_list, deliveries_list, demands_list):
@@ -302,9 +300,9 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A', 'B',  'F',  'H']
-    deliveries_list = ['D', 'C',  'G',  'I']
-    demand_list =     [ 1 ,  1,    1 ,   1 ]
+    pickups_list =    ['A']
+    deliveries_list = ['E']
+    demand_list =     [ 1 ]
 
     fleet_manager = FleetManager()
 

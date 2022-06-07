@@ -5,8 +5,8 @@ import math
 
 
 class Controller(object):
-    k_v = 0.2
-    k_w = 0.6
+    k_v = 0.1
+    k_w = 0.3
 
     def __init__(self, node):
         self.module_name = "controller"
@@ -35,12 +35,15 @@ class Controller(object):
         dp = np.array([self.goal_pose.x, self.goal_pose.y])-np.array([self.current_pose.x, self.current_pose.y])
         dist = np.linalg.norm(dp)
         dangle = self.goal_pose.theta - self.current_pose.theta
+        print(f'd_angle:{dangle}')
 
-        if dist > 0.2:
+        if dist > 0.1:
+            print(f'state:{self.control_state}')
             if self.control_state == 0:
-                if dangle < 0.1:
+                if abs(dangle) < 0.1:
+                    print('finish state 0 -> 1')
                     self.control_state = 1
-                    self.walk(0.0, 0.0)
+                    self.stop()
                 else:
                     v,w = self.spin(dangle)
             
@@ -49,7 +52,7 @@ class Controller(object):
             
             self.walk(v,w)
         else:
-            self.walk(0.0, 0.0)
+            self.stop()
             self.goal_reach = True
             self.do_logging('Robot is stopped.')
 
@@ -60,13 +63,15 @@ class Controller(object):
             return v,w
     
     def spin(self, err):
-            w = self.k_w*err
+            w = 0.3*np.sign(err)
             return 0.0, w
     
     def walk(self, v, w):
         if not self.node.working:
             self.do_logging('turtle walk while node is not active -> pass')
             return
+
+        print(f'v_x:{v}, v_z:{w}')
 
         msg = Twist()
         msg.linear.x = v
