@@ -18,7 +18,7 @@ from std_msgs.msg import Int16
 NODE_NAME = 'mission_manager'
 
 class MissionManager(Node):
-    def __init__(self, mission_executor, start_pose):
+    def __init__(self, mission_executor, initial_pose, depot_pose):
         super().__init__(node_name=NODE_NAME)
         self.module_name = 'mission_manager'
         self.working = False
@@ -27,9 +27,10 @@ class MissionManager(Node):
         self.map_metadata = None
         self.do_task_interval = 0.5 #sec
         self.follow_way_point = False
+        self.current_task = None
 
-        self.current_pose = start_pose
-        self.depot_pose = start_pose
+        self.current_pose = initial_pose
+        self.depot_pose = depot_pose
         self.current_node = None
 
         self.status = Int16()
@@ -106,6 +107,7 @@ class MissionManager(Node):
                 self.info(f"executing task with unit: {unit_name}")
                 self.executing = True
                 self.current_node = task.src_node
+                self.current_task = task
                 self.current_unit = unit
             else:
                 self.current_unit = None
@@ -118,7 +120,7 @@ class MissionManager(Node):
             status = self.mission_executor.status
             if status == GoalStatus.STATUS_SUCCEEDED:
                 self.info("Task Succeeded")
-                self.current_node = task.dst_node
+                self.current_node = self.current_task.dst_node
                 self.executing = False
                 self.mission_executor.reset_module()
                 self.info("reset mission executor .... do next task ....")
@@ -317,14 +319,14 @@ def main(args=None):
         "robot2":[-0.5, 0.0, 0.0],
         "robot3":[-0.5, -0.3, 0.0]
     }
-    start_pose = depot_dict[robot_name]
+    depot_pose = depot_dict[robot_name]
 
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "map"
-    initial_pose.pose.position.x = start_pose[0]
-    initial_pose.pose.position.y = start_pose[1]
+    initial_pose.pose.position.x = depot_pose[0]
+    initial_pose.pose.position.y = depot_pose[1]
     initial_pose.pose.position.z = 0.0
-    x,y,z,w = TransformManager.quaternion_from_euler(0, 0, start_pose[2])
+    x,y,z,w = TransformManager.quaternion_from_euler(0, 0, depot_pose[2])
     initial_pose.pose.orientation.x = x
     initial_pose.pose.orientation.y = y
     initial_pose.pose.orientation.z = z
@@ -338,7 +340,7 @@ def main(args=None):
 
         time.sleep(1)
 
-        mission_manager = MissionManager(mission_executor, initial_pose)
+        mission_manager = MissionManager(mission_executor, initial_pose, depot_pose)
 
         executor = MultiThreadedExecutor(num_threads=5)
         succes1 = executor.add_node(mission_manager)
