@@ -193,14 +193,8 @@ class MissionManager(Node):
                 self.status.data = 2
                 self.pub_status_once = True
                 self.error("Plan Failed!!!")
-            
-            self.info(f"send response to client : {result}")
-            # response.success = result
-            # return response
         else:
             self.warn('Receive request while current user mission is executing -> return Fail')
-            # response.success = False
-            # return response
 
     def initial_pose_cb(self, msg):
         self.info('receive initial_pose ... setting current pose')
@@ -339,10 +333,10 @@ def main(args=None):
     try:
         mission_executor = MissionExecutor()
 
-        # mission_executor.setInitialPose(initial_pose)
-        # mission_executor.waitUntilNav2Active()
+        mission_executor.setInitialPose(initial_pose)
+        mission_executor.waitUntilNav2Active()
 
-        # time.sleep(1)
+        time.sleep(1)
 
         mission_manager = MissionManager(mission_executor, initial_pose)
 

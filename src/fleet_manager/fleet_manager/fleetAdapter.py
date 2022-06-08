@@ -1,5 +1,3 @@
-
-from platform import node
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
