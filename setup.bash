@@ -1,4 +1,4 @@
-export server_ip=172.20.10.2
+export server_ip=172.20.10.3
 export server_port=10000
 export robot_port1=20000
 export robot_port2=30000
@@ -22,3 +22,5 @@ source ~/turtlebot3_ws/install/setup.bash
 
 source ~/Desktop/mobile_robot_ws/install/setup.bash
 source ~/Desktop/mobile_robot_ws/install/local_setup.bash
+
+FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg
