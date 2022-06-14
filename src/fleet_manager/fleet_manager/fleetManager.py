@@ -1,4 +1,5 @@
 import rclpy
+import time
 from rclpy.node import Node
 
 from mission_manager.topics import Topics
@@ -148,7 +149,7 @@ class FleetManager(Node):
         self.depot_node = None
         self.metadata = MapMetadata()
 
-        self.n_robots = 2
+        self.n_robots = 3
         self.load_capacity = 2
         self.num_stops = 2
 
@@ -278,6 +279,8 @@ class FleetManager(Node):
 
             success_list.append(future.result().success)
 
+            time.sleep(10.0)
+
         print(success_list)
 
     ########################################################################################
@@ -301,9 +304,9 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A', 'B']
-    deliveries_list = ['E', 'F']
-    demand_list =     [ 1 , 1]
+    pickups_list =    ['A', 'B', 'G']
+    deliveries_list = ['E', 'F', 'H']
+    demand_list =     [ 1 , 1, 1]
 
     fleet_manager = FleetManager()
 
