@@ -272,63 +272,6 @@ class MissionExecutor(Node):
         self.info('Nav2 is ready for use!')
         return
 
-    def changeMap(self, map_filepath):
-        """Change the current static map in the map server."""
-        while not self.change_maps_srv.wait_for_service(timeout_sec=1.0):
-            self.info('change map service not available, waiting...')
-        req = LoadMap.Request()
-        req.map_url = map_filepath
-        future = self.change_maps_srv.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        status = future.result().result
-        if status != LoadMap.Response.RESULT_SUCCESS:
-            self.error('Change map request failed!')
-        else:
-            self.info('Change map request was successful!')
-        return
-
-    def clearAllCostmaps(self):
-        """Clear all costmaps."""
-        self.clearLocalCostmap()
-        self.clearGlobalCostmap()
-        return
-
-    def clearLocalCostmap(self):
-        """Clear local costmap."""
-        while not self.clear_costmap_local_srv.wait_for_service(timeout_sec=1.0):
-            self.info('Clear local costmaps service not available, waiting...')
-        req = ClearEntireCostmap.Request()
-        future = self.clear_costmap_local_srv.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        return
-
-    def clearGlobalCostmap(self):
-        """Clear global costmap."""
-        while not self.clear_costmap_global_srv.wait_for_service(timeout_sec=1.0):
-            self.info('Clear global costmaps service not available, waiting...')
-        req = ClearEntireCostmap.Request()
-        future = self.clear_costmap_global_srv.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        return
-
-    def getGlobalCostmap(self):
-        """Get the global costmap."""
-        while not self.get_costmap_global_srv.wait_for_service(timeout_sec=1.0):
-            self.info('Get global costmaps service not available, waiting...')
-        req = GetCostmap.Request()
-        future = self.get_costmap_global_srv.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        return future.result().map
-
-    def getLocalCostmap(self):
-        """Get the local costmap."""
-        while not self.get_costmap_local_srv.wait_for_service(timeout_sec=1.0):
-            self.info('Get local costmaps service not available, waiting...')
-        req = GetCostmap.Request()
-        future = self.get_costmap_local_srv.call_async(req)
-        rclpy.spin_until_future_complete(self, future)
-        return future.result().map
-
     def pause_localizer(self):
         # check is localizer is pause
         check_active_srv_name = '/lifecycle_manager_localization/is_active'

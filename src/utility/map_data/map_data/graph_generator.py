@@ -11,8 +11,6 @@ import json
 import math
 
 class GraphLoader(Node):
-    # Fleet Management Initialized This Node
-
     def __init__(self, map_name):
         super().__init__('graph_loader')
 
@@ -179,10 +177,8 @@ class GraphLoader(Node):
 
         self.visualize_pub.publish(marker_list)
 
-
 def euc2d(p1,p2):
     return math.sqrt((p1[0]-p2[0])**2+(p1[1]-p2[1])**2)    
-
 
 def main(args=None):
     rclpy.init(args=args)

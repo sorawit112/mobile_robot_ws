@@ -65,7 +65,6 @@ class FleetAdapter(Node):
         self.current_pose.header = msg.header
         self.current_pose.pose = msg.pose.pose
 
-
     def do_usermission_cb(self, request, response):
         self.info("------------receive do_usermission request------------")
         node_list = request.user_mission.node_list
