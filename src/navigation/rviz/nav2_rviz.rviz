@@ -127,9 +127,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 2771
+      Max Intensity: 9959
       Min Color: 0; 0; 0
-      Min Intensity: 90
+      Min Intensity: 109
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true
@@ -332,7 +332,7 @@ Visualization Manager:
             Reliability Policy: Reliable
             Value: /global_costmap/published_footprint
           Value: false
-      Enabled: false
+      Enabled: true
       Name: Global Planner
     - Class: rviz_common/Group
       Displays:
@@ -553,7 +553,7 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Angle: -1.6150002479553223
+      Angle: -1.5550003051757812
       Class: rviz_default_plugins/TopDownOrtho
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
@@ -563,11 +563,11 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 117.43029022216797
+      Scale: 153.525146484375
       Target Frame: <Fixed Frame>
       Value: TopDownOrtho (rviz_default_plugins)
-      X: -0.044467076659202576
-      Y: -0.38726311922073364
+      X: 3.3206653594970703
+      Y: 2.6801974773406982
     Saved: ~
 Window Geometry:
   Displays:

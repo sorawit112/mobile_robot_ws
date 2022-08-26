@@ -1,4 +1,4 @@
-export server_ip=172.20.10.3
+export server_ip=192.168.8.24
 export server_port=10000
 export robot_port1=20000
 export robot_port2=30000
@@ -19,7 +19,7 @@ alias dds_server3='fastdds discovery --server-id 3 --ip-address $server_ip --por
 
 export TURTLEBOT3_MODEL=burger
 export ROBOT_NAME=robot2
-export MAP_NAME=maze
+export MAP_NAME=demo
 export ROS_DOMAIN_ID=30
 
 source ~/turtlebot3_ws/install/local_setup.bash
@@ -28,4 +28,7 @@ source ~/turtlebot3_ws/install/setup.bash
 source ~/Desktop/mobile_robot_ws/install/setup.bash
 source ~/Desktop/mobile_robot_ws/install/local_setup.bash
 
-#FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg
+alias daemon0='export FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg0'
+alias daemon1='export FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg1'
+alias daemon2='export FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg2'
+alias daemon3='export FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg3'
