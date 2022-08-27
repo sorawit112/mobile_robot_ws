@@ -138,7 +138,7 @@ class TraverseGraph(object):
         return adj_matrix, remap_station_dict
 
 class FleetManager(Node):
-    def __init__(self):
+    def __init__(self, num_stops):
         super().__init__(node_name="FleetManager")
         self.module_name = 'FleetManager'
         self.topic = Topics()
@@ -150,8 +150,8 @@ class FleetManager(Node):
         self.metadata = MapMetadata()
 
         self.n_robots = 3
-        self.load_capacity = 2
-        self.num_stops = 2
+        self.load_capacity = 1
+        self.num_stops = num_stops
 
     def pickup_delivery_plan(self, pickups_list, deliveries_list, demands_list):
         if len(pickups_list) != len(deliveries_list) and len(pickups_list) != len(demands_list):
@@ -304,11 +304,11 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A', 'B', 'G']
-    deliveries_list = ['E', 'F', 'H']
-    demand_list =     [ 1 , 1, 1]
+    pickups_list =    ['A', 'B', 'F', 'C', 'E']
+    deliveries_list = ['K', 'D', 'G', 'H', 'J']
+    demand_list =     [ 1 ,  1 ,  1 ,  1,  1]
 
-    fleet_manager = FleetManager()
+    fleet_manager = FleetManager(num_stops=4)
 
     fleet_manager.request_map_metadata()
     fleet_manager.pickup_delivery_plan(pickups_list,
