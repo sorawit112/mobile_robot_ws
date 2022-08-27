@@ -6,7 +6,7 @@ import math
 
 class Controller(object):
     k_v = 0.1
-    k_w = 0.3
+    k_w = 0.2
 
     def __init__(self, node):
         self.module_name = "controller"
@@ -37,10 +37,10 @@ class Controller(object):
         dangle = self.goal_pose.theta - self.current_pose.theta
         print(f'd_angle:{dangle}')
 
-        if dist > 0.1:
+        if dist > 0.2:
             print(f'state:{self.control_state}')
             if self.control_state == 0:
-                if abs(dangle) < 0.1:
+                if abs(dangle) < 0.17:
                     print('finish state 0 -> 1')
                     self.control_state = 1
                     self.stop()

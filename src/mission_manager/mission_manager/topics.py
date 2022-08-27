@@ -23,6 +23,8 @@ class Topics(object):
         self.robot_status = "/" + ROBOT_NAME + "/robot_status" 
         self.current_pose = "/" + ROBOT_NAME + "/current_pose" 
         self.do_task = "/" + ROBOT_NAME + "/do_task"
+        self.current_viapoints = "/" + ROBOT_NAME +'/current_viapoints'
+        self.viz_viapoints = "/" + ROBOT_NAME +'/viz_viapoints'
         
         # Service
         self.do_usermission = "/" + ROBOT_NAME + "/do_usermission"

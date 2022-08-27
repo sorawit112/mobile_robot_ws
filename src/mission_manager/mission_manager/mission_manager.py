@@ -11,6 +11,7 @@ from mission_manager.transform_manager import TransformManager
 from mission_manager.graph_planner import GraphPlanner, Task
 from action_msgs.msg import GoalStatus
 from custom_msgs.msg import UserMission as dotask
+from custom_msgs.msg import Viapoint
 from custom_msgs.srv import GetMapMetadata, UserMission
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import Int16
@@ -18,7 +19,7 @@ from std_msgs.msg import Int16
 NODE_NAME = 'mission_manager'
 
 class MissionManager(Node):
-    def __init__(self, mission_executor, initial_pose, depot_pose):
+    def __init__(self, mission_executor, initial_pose, depot_node):
         super().__init__(node_name=NODE_NAME)
         self.module_name = 'mission_manager'
         self.working = False
@@ -30,7 +31,7 @@ class MissionManager(Node):
         self.current_task = None
 
         self.current_pose = initial_pose
-        self.depot_pose = depot_pose
+        self.robot_depot_node = depot_node
         self.current_node = None
 
         self.status = Int16()
@@ -44,7 +45,8 @@ class MissionManager(Node):
         self.mission_executor = mission_executor
 
         self.robot_status_pub = self.create_publisher(Int16, self.topic.robot_status, qos_profile=1)
-        
+        self.current_viapoints_pub = self.create_publisher(Viapoint, self.topic.current_viapoints, qos_profile=1)
+
         self.create_subscription(dotask, self.topic.do_task, self.user_mission_cb, qos_profile=1)
         self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.initial_pose_cb, qos_profile=1)
         self.task_timer = self.create_timer(self.do_task_interval, self.do_task_interval_cb)
@@ -70,12 +72,7 @@ class MissionManager(Node):
             self.info('........ do task .......')
             task = self.graph_planner.get()
             unit, unit_name = self.unit_from_task(task.unit)
-
             self.graph_planner.show_task(task, unit_name)
-
-            if task.dst_node == self.map_metadata.depot_node:
-                self.info('dst_node is depot_node --> use local depot_pose instead!!!')
-                task.dst_pose = (self.depot_pose[0], self.depot_pose[1])
 
             goal = self.create_goal_pose_from_task(task)
             if unit is Unit.NAV:
@@ -118,6 +115,7 @@ class MissionManager(Node):
         if self.mission_executor.isTaskComplete():
             self.info('Task Completed ..... Getting Status ......')
             status = self.mission_executor.status
+            self.pub_current_viapoint()
             if status == GoalStatus.STATUS_SUCCEEDED:
                 self.info("Task Succeeded")
                 self.current_node = self.current_task.dst_node
@@ -187,6 +185,7 @@ class MissionManager(Node):
             result = self.graph_planner.plan(self.current_node, node_list) 
         
             if result:
+                self.pub_current_viapoint()
                 self.working = True
                 self.status.data = 1
                 self.pub_status_once = True
@@ -260,6 +259,14 @@ class MissionManager(Node):
 
         return dst_pose
 
+    def pub_current_viapoint(self):
+        self.info('pub current viapoints')
+        viapoints = Viapoint()
+        x,y = self.graph_planner.get_current_viapoints()
+        viapoints.x = x
+        viapoints.y = y
+        self.current_viapoints_pub.publish(viapoints)
+
     @staticmethod
     def calculate_heading(src_pose, dst_pose):
         y_diff = dst_pose[1] - src_pose[1]
@@ -314,19 +321,25 @@ class MissionManager(Node):
 def main(args=None):
     rclpy.init(args=args)
     robot_name = os.environ['ROBOT_NAME']
-    depot_dict = {
-        "robot1":[-0.5, 0.3, 0.0],
-        "robot2":[-0.5, 0.0, 0.0],
-        "robot3":[-0.5, -0.3, 0.0]
+    depot_node_dict = {
+        "robot1":40,
+        "robot2":39,
+        "robot3":38
     }
-    depot_pose = depot_dict[robot_name]
+    depot_pose_dict = {
+        "robot1":[1.1, 1.2, 0.0],
+        "robot2":[1.1, 2.2, 0.0],
+        "robot3":[1.1, 3.0, 0.0]
+    }
+    depot_node = depot_node_dict[robot_name]
+    depot_pose = depot_pose_dict[robot_name]
 
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = "map"
     initial_pose.pose.position.x = depot_pose[0]
     initial_pose.pose.position.y = depot_pose[1]
     initial_pose.pose.position.z = 0.0
-    x,y,z,w = TransformManager.quaternion_from_euler(0, 0, depot_pose[2])
+    x,y,z,w = TransformManager.quaternion_from_euler(0.0, 0.0, depot_pose[2])
     initial_pose.pose.orientation.x = x
     initial_pose.pose.orientation.y = y
     initial_pose.pose.orientation.z = z
@@ -340,7 +353,7 @@ def main(args=None):
 
         time.sleep(1)
 
-        mission_manager = MissionManager(mission_executor, initial_pose, depot_pose)
+        mission_manager = MissionManager(mission_executor, initial_pose, depot_node)
 
         executor = MultiThreadedExecutor(num_threads=5)
         succes1 = executor.add_node(mission_manager)

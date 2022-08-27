@@ -158,10 +158,10 @@ class GraphLoader(Node):
         marker.type = Marker.LINE_LIST
         marker.action = Marker.ADD
 
-        marker.scale.x = 0.02
+        marker.scale.x = 0.04
         marker.scale.y = 0.
         marker.scale.z = 0.
-        marker.color.a = 1.0
+        marker.color.a = 0.5
         marker.color.r = 0.5
         marker.color.g = 0.5
         marker.color.b = 0.5

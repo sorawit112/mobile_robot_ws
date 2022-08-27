@@ -1,4 +1,5 @@
 from queue import Queue
+from tkinter import E
 import networkx as nx
 import numpy as np
 
@@ -17,17 +18,23 @@ class GraphPlanner(object):
         self.node = node
 
         self.graph = nx.Graph(name="metadata") #graph._graph
+        self.graph_depot_node = None
         self.nodes = {} 
         self.edges = {} 
         self.edges_task = {} 
         self.stations = {} 
 
+        self.x_list = []
+        self.y_list = []
+        self.via_list = []
+        self.candi_node_list = [self.node.robot_depot_node]
         self.tasks = Queue(0) #infinit size
 
     def set_map_metadata(self, metadata):
         node_list = metadata.nodes
         edge_list = metadata.edges
         station_list = metadata.stations
+        self.graph_depot_node = metadata.depot_node
 
         for node in node_list:
             self.nodes[node.id] = (node.point.x, node.point.y)
@@ -43,6 +50,7 @@ class GraphPlanner(object):
 
         for station in station_list:
             self.stations[station.name] = station.node_id
+            self.candi_node_list.append(station.node_id)
 
         self.info("set_map_metada finished !!")
 
@@ -52,9 +60,11 @@ class GraphPlanner(object):
         
         via_points = []
         first = True
+        depot_node = self.node.robot_depot_node
         for i in range(len(node_list)-1):
-            node_start = node_list[i]
-            node_goal = node_list[i+1]
+            node_start = node_list[i] if node_list[i] != self.graph_depot_node else depot_node
+            node_goal = node_list[i+1] if node_list[i+1] != self.graph_depot_node else depot_node
+            
             self.info("**Plan** from (node {}) --> (node {})".format(node_start,
                                                                      node_goal))
             try:
@@ -82,6 +92,14 @@ class GraphPlanner(object):
             unit = self.edges_task[edge]
             task = Task(src_node, dst_node, src_pose, dst_pose, unit)
             self.tasks.put(task)      
+
+            self.x_list.append(round(src_pose[0],2))
+            self.y_list.append(round(src_pose[1],2))
+            self.via_list.append(src_node)
+
+        self.x_list.append(round(dst_pose[0],2))
+        self.y_list.append(round(dst_pose[1],2))
+        self.via_list.append(dst_node)
         
         self.info("plan !!SUCCEED")
         return True
@@ -106,6 +124,9 @@ class GraphPlanner(object):
     def get(self):
         """Pop first task from queue"""
         self.info('Pop first task from queue')
+        self.x_list.pop(0)
+        self.y_list.pop(0)
+        self.via_list.pop(0)
         return self.tasks.get_nowait()
 
     def peek(self):
@@ -127,6 +148,23 @@ class GraphPlanner(object):
         """Clear Tasks Queue"""
         self.info('Clear Current Task Queue')
         self.tasks = Queue(0)
+
+    def get_current_viapoints(self):
+        x = []
+        y = []
+
+        if len(self.via_list) > 1:
+            for i in range(1, len(self.via_list)):
+                if self.via_list[i] in self.candi_node_list:
+                    for j in range(i+1):
+                        x.append(self.x_list[j])
+                        y.append(self.y_list[j])
+                    return x, y
+        else:
+            x = self.x_list
+            y = self.y_list
+        
+        return x,y
 
     ########################################################################################
     #############           Logging

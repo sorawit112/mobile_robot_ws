@@ -8,9 +8,11 @@ from enum import Enum
 from mission_manager.topics import Topics
 from mission_manager.transform_manager import TransformManager
 from std_msgs.msg import Int16
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped, Point
+from visualization_msgs.msg import MarkerArray, Marker
 
 from custom_msgs.msg import UserMission as dotask
+from custom_msgs.msg import Viapoint
 from custom_msgs.srv import UserMission
 
 ROBOT_NAME = os.environ['ROBOT_NAME']
@@ -23,6 +25,7 @@ class FleetAdapter(Node):
         self.current_pose = PoseStamped()
         self.adapter_interval = 0.5
         self.status = 0 
+        self.count = 0
         """
             WAIT = 0
             NAVIGATE = 1
@@ -32,12 +35,18 @@ class FleetAdapter(Node):
         self.topic = Topics()
         self.tf_manager = TransformManager(self)
 
-        self.status_pub = self.create_publisher(Int16, self.topic.status, qos_profile=1)
+        self.via_x = []
+        self.via_y = []
+        self.via_points_list = MarkerArray()
+
+        self.visualize_pub = self.create_publisher(MarkerArray, self.topic.viz_viapoints, qos_profile=1)
+        # self.status_pub = self.create_publisher(Int16, self.topic.status, qos_profile=1)
         self.pose_pub = self.create_publisher(PoseStamped, self.topic.current_pose, qos_profile=1)
         self.do_task_pub = self.create_publisher(dotask, self.topic.do_task, qos_profile=1)
 
         self.create_subscription(PoseWithCovarianceStamped, self.topic.amcl_pose, self.amcl_pose_cb, qos_profile=1)
-        self.create_subscription(Int16, self.topic.robot_status, self.robot_status_cb, qos_profile=1)
+        # self.create_subscription(Int16, self.topic.robot_status, self.robot_status_cb, qos_profile=1)
+        self.create_subscription(Viapoint, self.topic.current_viapoints, self.current_viapoints_cb, qos_profile=1)
         self.create_service(UserMission, self.topic.do_usermission, self.do_usermission_cb)
         self.create_timer(self.adapter_interval, self.main_routine)
 
@@ -47,18 +56,51 @@ class FleetAdapter(Node):
         self.info("{} pose: x{:.2f}, y{:.2f}".format(ROBOT_NAME,
                                                     self.current_pose.pose.position.x,
                                                     self.current_pose.pose.position.y))
-        self.info(f"{ROBOT_NAME} status: {self.status}")
+        # self.info(f"{ROBOT_NAME} status: {self.status}")
         
-        # current_tf, success = self.tf_manager.get_tf("map", "base_footprint")
-        # if success:
-        #     self.current_pose = self.tf_manager.pose_stamped_from_tf_stamped(current_tf)
-        #     self.pose_pub.publish(self.current_pose)
-        # else:
-        #     self.warn("skip publish current_pose this frame")
+        self.pose_pub.publish(self.current_pose)
 
-        status_msg = Int16()
-        status_msg.data = self.status
-        self.status_pub.publish(status_msg)
+        if self.count != 6:
+            self.count = self.count+1
+            return
+
+        self.count = 0 
+
+        n = len(self.via_x)
+        if n > 1:
+            #draw mission plan
+            marker = Marker()
+            marker.header.frame_id = 'map'
+            marker.header.stamp = self.get_clock().now().to_msg()
+            marker.ns = "/"+ROBOT_NAME+"/path"
+            marker.id = 0
+            marker.type = Marker.LINE_LIST
+            marker.action = Marker.ADD
+
+            marker.scale.x = 0.02
+            marker.scale.y = 0.
+            marker.scale.z = 0.
+            marker.color.a = 1.0
+
+            marker.color.r = 0.
+            marker.color.g = 0.
+            marker.color.b = 0.
+
+            if ROBOT_NAME == 'robot1':
+                marker.color.r = 1.0
+            elif ROBOT_NAME == 'robot2':
+                marker.color.g = 1.0
+            else:
+                marker.color.b = 1.0
+
+            marker.points.clear()
+            
+            for i in range(n-1):
+                marker.points.append(Point(x=self.via_x[i], y=self.via_y[i], z=0.))
+                marker.points.append(Point(x=self.via_x[i+1], y=self.via_y[i+1], z=0.))
+
+            self.via_points_list.markers.append(marker)
+            self.visualize_pub.publish(self.via_points_list)
 
     def amcl_pose_cb(self, msg):
         self.debug("receive amcl pose")
@@ -79,9 +121,15 @@ class FleetAdapter(Node):
         response.success = True
         return response
 
-    def robot_status_cb(self, msg):
-        self.info(f"receive robot status : {msg.data}")
-        self.status = msg.data
+    # def robot_status_cb(self, msg):
+    #     self.info(f"receive robot status : {msg.data}")
+    #     self.status = msg.data
+
+    def current_viapoints_cb(self, msg):
+        self.info(f"receive current viapoints: {len(msg.x)} points")
+
+        self.via_x = msg.x
+        self.via_y = msg.y           
 
     ########################################################################################
     #############           Logging

@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/MapStation.msg"
   "msg/MapMetadata.msg"
   "msg/UserMission.msg"
+  "msg/Viapoint.msg"
   "srv/GetMapMetadata.srv"
   "srv/UserMission.srv"
   "action/NavigateAction.action"

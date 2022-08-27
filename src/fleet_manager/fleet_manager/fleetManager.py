@@ -304,8 +304,8 @@ class FleetManager(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    pickups_list =    ['A', 'B', 'F', 'C', 'E']
-    deliveries_list = ['K', 'D', 'G', 'H', 'J']
+    pickups_list =    ['B', 'A', 'C', 'E', 'I']
+    deliveries_list = ['F', 'D', 'G', 'H', 'J']
     demand_list =     [ 1 ,  1 ,  1 ,  1,  1]
 
     fleet_manager = FleetManager(num_stops=4)
