@@ -327,9 +327,9 @@ def main(args=None):
         "robot3":38
     }
     depot_pose_dict = {
-        "robot1":[1.1, 1.2, 0.0],
+        "robot1":[1.1, 3.0, 0.0],
         "robot2":[1.1, 2.2, 0.0],
-        "robot3":[1.1, 3.0, 0.0]
+        "robot3":[1.1, 1.2, 0.0]
     }
     depot_node = depot_node_dict[robot_name]
     depot_pose = depot_pose_dict[robot_name]
