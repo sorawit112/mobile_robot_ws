@@ -1,0 +1,90 @@
+Modules
+
+FLEET PLANNER
+- Fleet Manager
+- Graph Generator
+
+==== fleet Adapter ==== ; ตัวกลางในการสื่อสารระหว่าง Fleet, Client
+
+CLIENT ROBOT PLANNER
+High Level Planner
+- Mission Manager
+- Mission Executor
+- NAV2 Stack (AMCL2, GlobalPlanner, LocalPlanner, MapServer ….)
+- TURTLE control
+
+Turtlebot3 Bringup
+
+ROS2 SERVER
+- Fastdds Server ID:0 ; Fleet Planner, Fleet Adapter(1,2,3)
+- Fastdds Server ID:1 ; Fleet Adapter(1), Client Robot Planner(1), Robot1_bringup
+- Fastdds Server ID:2 ; Fleet Adapter(2), Client Robot Planner(2), Robot2_bringup
+- Fastdds Server ID:3 ; Fleet Adapter(3), Client Robot Planner(3), Robot3_bringup
+
+=============================================================
+
+LAUNCH STEP
+
+(1) Startup Robot1 (bring up)
+1. PC1 open new terminal and ssh ubuntu@192.168.1.103
+2. SET dds_robot and launch turtlebot_bringup
+3. PC1 open new terminal and start dds_server0
+4. PC1 open new terminal and start dds_server1
+5. PC1 open new terminal and Set  dds_robot1 and export                                                                                          FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg1
+6. ros2 daemon stop → start 
+7. ros2 run tf2_ros tf2_echo odom base_footprint and make sure the result show that TF not explode
+// IF explode exit(ctr_c) all terminal and repeat from 1 again
+(2) Startup Robot2 (bring up)
+1. PC2 open new terminal and ssh ubuntu@192.168.1.102
+2. SET dds_robot and launch turtlebot_bringup
+3. PC1 open new terminal and start dds_server2
+4. PC2 open new terminal and Set  dds_robot2 and export                                                                                          FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg2
+5. ros2 daemon stop → start 
+6. ros2 run tf2_ros tf2_echo odom base_footprint and make sure the result show that TF not explode
+// IF explode exit(ctr_c) all terminal and repeat from 1 again
+(3) Startup Robot3 (bring up)
+1. PC3 open new terminal ssh ubuntu@192.168.1.104
+2. SET dds_robot3 and launch turtlebot_bringup
+3. PC1 open new terminal and start dds_server_3
+4. PC3 open new terminal and Set  dds_robot3 and export                                                                                          FASTRTPS_DEFAULT_PROFILES_FILE=super_client_cfg3
+5. ros2 daemon stop → start 
+6. ros2 run tf2_ros tf2_echo odom base_footprint and make sure the result show that TF not explode
+// IF explode exit(ctr_c) all terminal and repeat from 1 again
+(4) Startup Client Robot1
+1. PC1 open new terminal and SET dds_robot1
+2. ros2 launch navigation navigation.launch.py wait until nav2 log is stop running                                                             
+3. PC1 open new terminal and SET dds_robot1
+4. ros2 run mission_manager mission_manager wait until log show no_user mission request → start success fully
+5. PC1 open new terminal and SET dds_robot1
+6. ros2 run turtle_unit turtle_unit
+(5) Startup Client Robot2
+1. PC2 open new terminal and SET dds_robot2
+2. ros2 launch navigation navigation.launch.py wait until nav2 log is stop running
+3. PC2 open new terminal and SET dds_robot2
+4. ros2 run mission_manager mission_manager wait until log show no_user mission request → start success fully
+5. PC2 open new terminal and SET dds_robot2
+6. ros2 run turtle_unit turtle_unit
+(6) Startup Client Robot3
+1. PC3 open new terminal and SET dds_robot3
+2. ros2 launch navigation navigation.launch.py wait until nav2 log is stop running
+3. PC3 open new terminal and SET dds_robot3
+4. ros2 run mission_manager mission_manager wait until log show no_user mission request → start success fully
+5. PC3 open new terminal and SET dds_robot3
+6. ros2 run turtle_unit turtle_unit
+(7) Start Fleet Adapters(1,2,3)
+1. PC1 open new terminal and SET dds_adapter1
+2. ros2 run fleet_manager fleet_adapter if no error and log is report position =done
+3. PC2 open new terminal and SET dds_adapter2
+4. ros2 run fleet_manager fleet_adapter if no error and log is report position =done
+5. PC3 open new terminal and SET dds_adapter3
+6. ros2 run fleet_manager fleet_adapter if no error and log is report position =done
+
+(8) Start Fleet Manager and Start Walking
+1. PC1 open new terminal and SET dds_fleet
+2. ros2 run map_data graph_generator(their are hard path in code)if no error=done
+3. PC1 open new terminal and SET dds_fleet
+4. ros2 run fleet_manager fleet_manager (set up pick-place station in code)
+
+(9) Reprocess
+1. PC1 at terminal fleet manager
+2. stop (ctr_c) and set new pick-place station in code then build & run
