@@ -4,6 +4,10 @@ export robot_port1=20000
 export robot_port2=30000
 export robot_port3=40000
 
+alias ssh_robot1='ssh ubuntu@192.168.8.11'
+alias ssh_robot4='ssh ubuntu@192.168.8.14'
+alias ssh_robot5='ssh ubuntu@192.168.8.15'
+
 alias dds_robot1='export ROS_DISCOVERY_SERVER=";$server_ip:$robot_port1;;"'
 alias dds_robot2='export ROS_DISCOVERY_SERVER=";;$server_ip:$robot_port2;"'
 alias dds_robot3='export ROS_DISCOVERY_SERVER=";;;$server_ip:$robot_port3"'
